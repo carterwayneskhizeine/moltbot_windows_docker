@@ -7,12 +7,6 @@
 
 import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { dirname } from 'node:path';
-
-// ESM-compatible __dirname and __filename
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 // Global references
 let mainWindow: BrowserWindow | null = null;
