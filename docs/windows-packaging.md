@@ -257,10 +257,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
 | 工具 | 必需 | 版本 | 大小 | 下载源 |
 |------|------|------|------|--------|
-| Node.js | 是 | 22.12.0 | ~70MB | nodejs.org/dist |
-| Python | 是 | 3.12.8 | ~60MB | python.org/ftp |
-| Git | 是 | 2.47.0 | ~60MB | github.com/git-for-windows |
-| FFmpeg | 是 | 7.0 | ~90MB | gyan.dev/ffmpeg |
+| Node.js | 是 | 24.13.1 | ~70MB | nodejs.org/dist |
+| Python | 是 | 3.12.12 | ~60MB | python.org/ftp |
+| Git | 是 | 2.53.0 | ~60MB | github.com/git-for-windows |
+| FFmpeg | 是 | 8.0.1 | ~90MB | gyan.dev/ffmpeg |
 
 **工具安装目录：**
 
