@@ -38,7 +38,8 @@ win:
         - x64
   artifactName: OpenClaw-Setup-${version}.${ext}
   icon: resources/icon.ico
-  publisherName: OpenClaw
+  signtoolOptions:
+    publisherName: OpenClaw
 
 nsis:
   oneClick: false

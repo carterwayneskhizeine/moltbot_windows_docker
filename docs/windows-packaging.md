@@ -597,3 +597,44 @@ Windows 安装包需要代码签名才能通过 SmartScreen：
 - [electron-builder 文档](https://www.electron.build/)
 - [OpenClaw 现有 Docker 配置](./Dockerfile)
 - [macOS 打包脚本](./scripts/package-mac-app.sh)
+
+
+## 更新方案
+1. 自动更新（推荐）
+在 Electron 中实现自动更新功能，用户安装后可以自动检测和下载新版本。
+
+需要添加的配置：
+
+```
+// apps/electron/src/main.ts
+import { autoUpdater } from 'electron-updater';
+
+app.whenReady().then(() => {
+  // 配置自动更新
+  autoUpdater.setFeedURL({
+    provider: 'github',
+    owner: 'openclaw',
+    repo: 'openclaw'
+  });
+  
+  autoUpdater.checkForUpdatesAndNotify();
+});
+
+# apps/electron/electron-builder.yml 添加
+publish:
+  provider: github
+  owner: your-username
+  repo: goldieopenclaw
+  releaseType: release
+```
+2. 手动覆盖安装
+最简单的方式 - 用户直接下载新版本安装包，运行安装程序会自动覆盖旧版本（用户配置会保留）。
+
+3. 内置更新检测
+在应用内添加"检查更新"按钮，下载新版本后提示用户安装。
+
+你想实现哪种方案？
+
+自动更新 - 需要配置 GitHub Releases，用户体验最好
+手动覆盖 - 最简单，用户重新安装即可
+应用内更新检测 - 中等复杂度，需要添加更新 UI
