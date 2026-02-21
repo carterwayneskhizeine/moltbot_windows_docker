@@ -8,7 +8,6 @@
 import { spawn, ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
-import { net } from 'electron';
 
 // Gateway configuration
 const GATEWAY_PORT = 18789;
@@ -42,6 +41,9 @@ class GatewayManager implements GatewayProcessHandle {
   private outputCallbacks: Array<(data: string) => void> = [];
   private resourcesPath: string;
   private options: GatewayOptions;
+  private restartAttempts = 0;
+  private maxRestartAttempts = 5;
+  private restartTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(resourcesPath: string, options: GatewayOptions = {}) {
     this.resourcesPath = resourcesPath;
@@ -76,7 +78,13 @@ class GatewayManager implements GatewayProcessHandle {
     // Determine working directory
     // For packaged app, code is in resources/app, so use that as cwd
     // For dev, use resourcesPath (project root)
-    const cwd = path.join(this.resourcesPath, 'app');
+    const appDir = path.join(this.resourcesPath, 'app');
+    const cwd = fs.existsSync(appDir) ? appDir : this.resourcesPath;
+
+    console.log('[Gateway] Computed cwd:', cwd);
+    console.log('[Gateway] cwd exists:', fs.existsSync(cwd));
+    console.log('[Gateway] gatewayEntry exists:', fs.existsSync(gatewayEntry));
+    console.log('[Gateway] nodeExe exists:', fs.existsSync(nodeExe));
 
     // Spawn the process
     this.process = spawn(nodeExe, [gatewayEntry, 'gateway'], {
@@ -86,8 +94,7 @@ class GatewayManager implements GatewayProcessHandle {
         NODE_ENV: 'production',
         PATH: process.env.PATH,
       },
-      // Use the app directory as working directory for packaged app
-      cwd: fs.existsSync(cwd) ? cwd : this.resourcesPath,
+      cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
       detached: false,
       shell: false,
@@ -133,9 +140,19 @@ class GatewayManager implements GatewayProcessHandle {
       this.process = null;
 
       // Auto-restart on unexpected exit (not during normal quit)
-      if (signal !== 'SIGTERM' && signal !== 'SIGINT') {
-        console.log('[Gateway] Auto-restarting after unexpected exit');
-        setTimeout(() => this.start(), 2000);
+      // Limit restart attempts to prevent infinite loops
+      if (signal !== 'SIGTERM' && signal !== 'SIGINT' && signal !== 'SIGKILL') {
+        if (this.restartAttempts < this.maxRestartAttempts) {
+          this.restartAttempts++;
+          console.log(`[Gateway] Auto-restarting after unexpected exit (attempt ${this.restartAttempts}/${this.maxRestartAttempts})`);
+          this.restartTimeout = setTimeout(() => this.start(), 2000);
+        } else {
+          console.error('[Gateway] Max restart attempts reached, giving up');
+          this.status = 'error';
+        }
+      } else {
+        // Normal exit, reset restart counter
+        this.restartAttempts = 0;
       }
     });
 
@@ -281,6 +298,15 @@ class GatewayManager implements GatewayProcessHandle {
    * Stop the Gateway
    */
   stop(): void {
+    // Clear any pending restart timeout
+    if (this.restartTimeout) {
+      clearTimeout(this.restartTimeout);
+      this.restartTimeout = null;
+    }
+
+    // Reset restart counter
+    this.restartAttempts = 0;
+
     if (this.process) {
       console.log('[Gateway] Stopping...');
       this.process.kill('SIGTERM');

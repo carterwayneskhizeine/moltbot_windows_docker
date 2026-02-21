@@ -27,7 +27,40 @@ class TrayManager {
 
     this.tray = new Tray(icon.isEmpty() ? this.createFallbackIcon() : icon);
     this.tray.setToolTip('OpenClaw');
+
+    // Handle single click - toggle window visibility
+    this.tray.on('click', () => {
+      this.onTrayClick();
+    });
+
+    // Handle double click - show and focus window
+    this.tray.on('double-click', () => {
+      this.onTrayDoubleClick();
+    });
+
     this.updateMenu();
+  }
+
+  /**
+   * Handle tray click - toggle window visibility
+   */
+  private onTrayClick(): void {
+    const { BrowserWindow } = require('electron');
+    const windows = BrowserWindow.getAllWindows();
+
+    if (windows.length === 0) {
+      // No window exists, create one
+      createMainWindow().show();
+      return;
+    }
+
+    const win = windows[0];
+    if (win.isVisible()) {
+      win.hide();
+    } else {
+      win.show();
+      win.focus();
+    }
   }
 
   /**

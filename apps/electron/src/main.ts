@@ -11,16 +11,10 @@ import path from 'node:path';
 // Global references
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
-let gatewayProcess: ReturnType<typeof import('./gateway.js')['startGateway']> | null = null;
+let gatewayProcess: any = null;
 let isQuitting = false;
-
-// Determine if we're in development or production
-const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
-
-// Resources path (different in dev vs production)
-const resourcesPath = isDev
-  ? path.join(__dirname, '../../..')
-  : process.resourcesPath;
+let isDev: boolean;
+let resourcesPath: string;
 
 /**
  * Create and show the splash screen
@@ -191,6 +185,12 @@ async function createMainWindow(): Promise<BrowserWindow> {
  * Application ready handler
  */
 app.whenReady().then(async () => {
+  // Initialize dev mode and resources path (can't access app.isPackaged before ready)
+  isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+  resourcesPath = isDev
+    ? path.join(__dirname, '../../..')
+    : process.resourcesPath;
+
   // Create splash screen first
   await createSplashWindow();
 
