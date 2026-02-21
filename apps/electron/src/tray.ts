@@ -51,7 +51,7 @@ class TrayManager {
   /**
    * Create a fallback icon (simple colored square)
    */
-  private createFallbackIcon(): nativeImage {
+  private createFallbackIcon(): Electron.NativeImage {
     const size = 16;
     const buffer = Buffer.alloc(size * size * 4);
 

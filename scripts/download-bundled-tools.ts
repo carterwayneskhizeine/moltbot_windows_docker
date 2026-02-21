@@ -12,9 +12,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createReadStream, createWriteStream } from 'node:fs';
+import { createUnzip } from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
-import { extractFull } from 'node:7z';
 import { fileURLToPath } from 'node:url';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execAsync = promisify(exec);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,7 +51,7 @@ const TOOLS: ToolDownloadInfo[] = [
     name: 'git',
     version: '2.48.1',
     url: 'https://github.com/git-for-windows/git/releases/download/v2.48.1.windows.1/MinGit-2.48.1-64-bit.zip',
-    extractDir: 'mingit64', // MinGit extracts to mingit64 folder
+    extractDir: 'mingit64',
     targetDir: 'bundled-tools/git',
   },
   {
@@ -109,7 +113,7 @@ async function downloadFile(
 }
 
 /**
- * Extract a ZIP archive using 7z
+ * Extract a ZIP archive using tar (on Windows) or unzip (on Unix)
  */
 async function extractZip(
   zipPath: string,
@@ -123,27 +127,61 @@ async function extractZip(
   // Extract to a temporary directory first
   const tempDir = path.join(targetDir, '.temp_extract');
 
-  await extractFull(zipPath, tempDir);
+  // Use tar on Windows (built into Windows 10+), unzip on Unix
+  const isWindows = process.platform === 'win32';
+  const tarPath = path.join(ROOT_DIR, 'resources', 'nodejs', 'node_modules', 'npm', 'bin', 'node.exe');
+
+  // Try using tar (available on Windows 10+ and Unix)
+  const tarCmd = isWindows
+    ? `tar -xf "${zipPath}" -C "${tempDir}"`
+    : `unzip -q "${zipPath}" -d "${tempDir}"`;
+
+  try {
+    await fs.promises.mkdir(tempDir, { recursive: true });
+    await execAsync(tarCmd, { maxBuffer: 10 * 1024 * 1024 });
+  } catch (err) {
+    // If tar fails, try using PowerShell on Windows
+    if (isWindows) {
+      try {
+        await execAsync(
+          `powershell -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${tempDir}' -Force"`,
+          { maxBuffer: 10 * 1024 * 1024 }
+        );
+      } catch (psErr) {
+        throw new Error(`Failed to extract ZIP: ${psErr}`);
+      }
+    } else {
+      throw err;
+    }
+  }
 
   // If there's a subdirectory to extract, move its contents
   if (extractSubdir) {
     const sourceDir = path.join(tempDir, extractSubdir);
 
     if (!fs.existsSync(sourceDir)) {
-      // List what was actually extracted
+      // Subdirectory not found, check if files are directly in temp dir
+      // (This happens with Python embed zip)
       const entries = fs.readdirSync(tempDir);
-      console.log(`Extracted entries:`, entries);
-      throw new Error(`Expected subdirectory not found: ${extractSubdir}`);
-    }
+      console.log(`Note: Expected subdirectory '${extractSubdir}' not found, using root contents instead`);
 
-    // Move contents to target directory
-    const entries = await fs.promises.readdir(sourceDir);
+      // Move everything from temp dir to target dir
+      for (const entry of entries) {
+        const srcPath = path.join(tempDir, entry);
+        const destPath = path.join(targetDir, entry);
 
-    for (const entry of entries) {
-      const srcPath = path.join(sourceDir, entry);
-      const destPath = path.join(targetDir, entry);
+        await fs.promises.rename(srcPath, destPath);
+      }
+    } else {
+      // Move contents from subdirectory to target directory
+      const entries = await fs.promises.readdir(sourceDir);
 
-      await fs.promises.rename(srcPath, destPath);
+      for (const entry of entries) {
+        const srcPath = path.join(sourceDir, entry);
+        const destPath = path.join(targetDir, entry);
+
+        await fs.promises.rename(srcPath, destPath);
+      }
     }
 
     // Clean up temp directory

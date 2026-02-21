@@ -157,10 +157,11 @@ class WindowManager {
     const gatewayUrl = 'http://127.0.0.1:18789';
 
     try {
-      // Try loading with a short timeout
-      await this.window.loadURL(gatewayUrl, {
-        timeout: 5000,
-      });
+      // Try loading with a short timeout (Electron doesn't support timeout in loadURL options)
+      await Promise.race([
+        this.window.loadURL(gatewayUrl),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000)),
+      ]);
     } catch (err) {
       console.error('Failed to load Gateway UI:', err);
 

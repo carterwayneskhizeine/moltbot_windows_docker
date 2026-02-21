@@ -85,7 +85,7 @@ if (process.contextIsolated) {
   }
 } else {
   // Fallback for non-isolated context (not recommended)
-  (window as any).electronAPI = electronAPI;
+  (globalThis as any).window.electronAPI = electronAPI;
 }
 
 // TypeScript type definitions for the renderer
