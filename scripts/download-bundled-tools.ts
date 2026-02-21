@@ -49,14 +49,14 @@ const TOOLS: ToolDownloadInfo[] = [
   },
   {
     name: 'git',
-    version: '2.48.1',
-    url: 'https://github.com/git-for-windows/git/releases/download/v2.48.1.windows.1/MinGit-2.48.1-64-bit.zip',
+    version: '2.53.0',
+    url: 'https://github.com/git-for-windows/git/releases/download/v2.53.0.windows.1/MinGit-2.53.0-64-bit.zip',
     extractDir: 'mingit64',
     targetDir: 'bundled-tools/git',
   },
   {
     name: 'ffmpeg',
-    version: '7.1',
+    version: '8.0.1',
     url: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip',
     extractDir: 'ffmpeg-master-latest-win64-gpl',
     targetDir: 'bundled-tools/ffmpeg',
@@ -220,6 +220,12 @@ async function downloadTool(tool: ToolDownloadInfo): Promise<void> {
       console.log(`${tool.name} ${tool.version} already installed`);
       return;
     }
+  }
+
+  // Clean target directory if it exists (version mismatch or incomplete extraction)
+  if (fs.existsSync(targetDir)) {
+    console.log(`Cleaning existing ${tool.name} directory...`);
+    await fs.promises.rm(targetDir, { recursive: true, force: true });
   }
 
   // Download if not cached

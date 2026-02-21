@@ -112,3 +112,7 @@ apps/ios/LocalSigning.xcconfig
 
 # boundled-tools
 bundled-tools/
+
+# Electron build artifacts
+apps/electron/dist-electron/
+apps/electron/dist/

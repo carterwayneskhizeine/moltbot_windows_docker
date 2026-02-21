@@ -37,7 +37,7 @@ export const BUNDLED_TOOLS: ToolDefinition[] = [
   {
     name: 'python',
     description: 'Python Programming Language',
-    version: '3.12.0',
+    version: '3.12.8',
     required: true,
     checkPath: ['python.exe', 'python3.exe', 'python'],
     executable: 'python.exe',
@@ -45,7 +45,7 @@ export const BUNDLED_TOOLS: ToolDefinition[] = [
   {
     name: 'git',
     description: 'Git Version Control',
-    version: '2.43.0',
+    version: '2.53.0',
     required: true,
     checkPath: ['cmd/git.exe', 'bin/git.exe', 'git.exe', 'git'],
     executable: 'git.exe',
@@ -53,7 +53,7 @@ export const BUNDLED_TOOLS: ToolDefinition[] = [
   {
     name: 'ffmpeg',
     description: 'FFmpeg Multimedia Framework',
-    version: '7.0.0',
+    version: '8.0.1',
     required: true,
     checkPath: ['bin/ffmpeg.exe', 'ffmpeg.exe', 'ffmpeg'],
     executable: 'ffmpeg.exe',
