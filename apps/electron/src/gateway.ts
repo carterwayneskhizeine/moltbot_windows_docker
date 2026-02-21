@@ -70,6 +70,8 @@ class GatewayManager implements GatewayProcessHandle {
     const gatewayEntry = this.findGatewayEntry();
 
     console.log('[Gateway] Starting with:', nodeExe, gatewayEntry);
+    console.log('[Gateway] Working directory:', this.resourcesPath);
+    console.log('[Gateway] Current process cwd:', process.cwd());
 
     // Spawn the process
     this.process = spawn(nodeExe, [gatewayEntry, 'gateway'], {
@@ -77,26 +79,47 @@ class GatewayManager implements GatewayProcessHandle {
         ...process.env,
         OPENCLAW_MODE: 'gui',
         NODE_ENV: 'production',
-        ...this.options.env,
+        PATH: process.env.PATH,
       },
+      // Use the project root as working directory
       cwd: this.resourcesPath,
-      stdio: 'pipe',
+      stdio: ['pipe', 'pipe', 'pipe'],
       detached: false,
+      shell: false,
+      windowsHide: true,
     });
+
+    console.log('[Gateway] Process spawned, PID:', this.process.pid);
 
     // Handle stdout
-    this.process.stdout?.on('data', (data: Buffer) => {
-      const output = data.toString();
-      console.log('[Gateway stdout]', output);
-      this.notifyOutput(output);
-    });
+    if (this.process.stdout) {
+      this.process.stdout.on('data', (data: Buffer) => {
+        const output = data.toString();
+        console.log('[Gateway stdout]', output.trim());
+        this.notifyOutput(output);
+      });
+
+      this.process.stdout.on('error', (err) => {
+        console.error('[Gateway stdout error]', err);
+      });
+    } else {
+      console.warn('[Gateway] stdout is null');
+    }
 
     // Handle stderr
-    this.process.stderr?.on('data', (data: Buffer) => {
-      const output = data.toString();
-      console.error('[Gateway stderr]', output);
-      this.notifyOutput(output);
-    });
+    if (this.process.stderr) {
+      this.process.stderr.on('data', (data: Buffer) => {
+        const output = data.toString();
+        console.error('[Gateway stderr]', output.trim());
+        this.notifyOutput(output);
+      });
+
+      this.process.stderr.on('error', (err) => {
+        console.error('[Gateway stderr error]', err);
+      });
+    } else {
+      console.warn('[Gateway] stderr is null');
+    }
 
     // Handle process exit
     this.process.on('exit', (code, signal) => {
@@ -118,6 +141,19 @@ class GatewayManager implements GatewayProcessHandle {
       this.notifyOutput(`ERROR: ${err.message}\n`);
     });
 
+    // Check if process is still alive after a short delay
+    setTimeout(() => {
+      if (this.process && this.process.pid) {
+        try {
+          // Check if process is still alive
+          process.kill(this.process.pid, 0);
+          console.log('[Gateway] Process is alive, PID:', this.process.pid);
+        } catch (err) {
+          console.error('[Gateway] Process check failed:', err);
+        }
+      }
+    }, 100);
+
     // Set up ready check
     this.readyPromise = this.waitForReady();
   }
@@ -126,12 +162,21 @@ class GatewayManager implements GatewayProcessHandle {
    * Find the Node.js executable
    */
   private findNodeExecutable(): string {
-    // Try bundled Node.js first
-    const bundledNode = path.join(this.resourcesPath, 'tools', 'nodejs', 'node.exe');
+    // Try bundled Node.js first (in bundled-tools directory)
+    const bundledNode = path.join(this.resourcesPath, 'bundled-tools', 'nodejs', 'node.exe');
     if (fs.existsSync(bundledNode)) {
+      console.log('[Gateway] Using bundled Node.js:', bundledNode);
       return bundledNode;
     }
 
+    // Try alternative path (for packaged app)
+    const altBundledNode = path.join(this.resourcesPath, 'tools', 'nodejs', 'node.exe');
+    if (fs.existsSync(altBundledNode)) {
+      console.log('[Gateway] Using bundled Node.js (alt path):', altBundledNode);
+      return altBundledNode;
+    }
+
+    console.warn('[Gateway] Bundled Node.js not found, falling back to system Node.js');
     // Fall back to system Node.js
     return process.execPath;
   }
@@ -140,18 +185,28 @@ class GatewayManager implements GatewayProcessHandle {
    * Find the Gateway entry point
    */
   private findGatewayEntry(): string {
-    // Try the built dist/index.js
-    const distEntry = path.join(this.resourcesPath, 'app', 'dist', 'index.js');
-    if (fs.existsSync(distEntry)) {
-      return distEntry;
-    }
-
-    // Try the CLI entry point
+    // Try the CLI entry point (openclaw.mjs in project root)
     const cliEntry = path.join(this.resourcesPath, 'openclaw.mjs');
     if (fs.existsSync(cliEntry)) {
+      console.log('[Gateway] Using CLI entry:', cliEntry);
       return cliEntry;
     }
 
+    // Try the built dist/index.js (in project root)
+    const distEntry = path.join(this.resourcesPath, 'dist', 'index.js');
+    if (fs.existsSync(distEntry)) {
+      console.log('[Gateway] Using dist entry:', distEntry);
+      return distEntry;
+    }
+
+    // For packaged app, app might be in resources/app/dist
+    const appDistEntry = path.join(this.resourcesPath, 'app', 'dist', 'index.js');
+    if (fs.existsSync(appDistEntry)) {
+      console.log('[Gateway] Using app/dist entry:', appDistEntry);
+      return appDistEntry;
+    }
+
+    console.warn('[Gateway] Gateway entry not found, using fallback');
     // Fall back to a relative path (development)
     return path.join(this.resourcesPath, 'dist', 'index.js');
   }

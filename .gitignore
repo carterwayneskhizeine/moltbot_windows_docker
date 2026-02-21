@@ -18,6 +18,16 @@ ui/src/ui/__screenshots__/
 ui/playwright-report/
 ui/test-results/
 
+# Build log files
+node
+vite
+tsc
+openclaw@*
+openclaw-electron@*
+*-electron@*
+@*
+openclaw-control-ui@
+
 # Mise configuration files
 mise.toml
 
