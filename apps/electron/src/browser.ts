@@ -138,7 +138,17 @@ class WindowManager {
       this.saveWindowState();
     });
 
-    // Handle close
+    // Intercept close event to hide window instead of closing
+    window.on('close', (event) => {
+      const { app } = require('electron');
+      // Only prevent close if app is not quitting
+      if (!(app as any).isQuitting && !window.isDestroyed()) {
+        event.preventDefault();
+        window.hide();
+      }
+    });
+
+    // Handle actual close (when app is quitting)
     window.on('closed', () => {
       this.window = null;
     });

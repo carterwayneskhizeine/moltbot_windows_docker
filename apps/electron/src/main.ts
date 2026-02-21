@@ -12,6 +12,7 @@ import path from 'node:path';
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
 let gatewayProcess: ReturnType<typeof import('./gateway.js')['startGateway']> | null = null;
+let isQuitting = false;
 
 // Determine if we're in development or production
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
@@ -168,7 +169,17 @@ async function createMainWindow(): Promise<BrowserWindow> {
     }
   });
 
-  // Window closed
+  // Intercept window close to hide instead of quit
+  window.on('close', (event) => {
+    // If the window is still being shown, hide it instead of closing
+    // This allows the app to continue running in the background with tray icon
+    if (!window.isDestroyed() && !isQuitting) {
+      event.preventDefault();
+      window.hide();
+    }
+  });
+
+  // Window closed (actually destroyed)
   window.on('closed', () => {
     mainWindow = null;
   });
@@ -234,16 +245,17 @@ app.whenReady().then(async () => {
  */
 app.on('window-all-closed', () => {
   // On macOS, keep app running (common behavior)
-  // On Windows/Linux, quit app when all windows closed
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  // On Windows/Linux, keep app running in background with tray icon
+  // Don't quit - let user explicitly quit via tray menu
 });
 
 /**
  * Application quit handler
  */
 app.on('before-quit', () => {
+  // Set quitting flag so window close handler doesn't interfere
+  isQuitting = true;
+
   // Stop Gateway process
   if (gatewayProcess) {
     gatewayProcess.stop();
