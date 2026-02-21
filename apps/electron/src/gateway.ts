@@ -73,6 +73,11 @@ class GatewayManager implements GatewayProcessHandle {
     console.log('[Gateway] Working directory:', this.resourcesPath);
     console.log('[Gateway] Current process cwd:', process.cwd());
 
+    // Determine working directory
+    // For packaged app, code is in resources/app, so use that as cwd
+    // For dev, use resourcesPath (project root)
+    const cwd = path.join(this.resourcesPath, 'app');
+
     // Spawn the process
     this.process = spawn(nodeExe, [gatewayEntry, 'gateway'], {
       env: {
@@ -81,8 +86,8 @@ class GatewayManager implements GatewayProcessHandle {
         NODE_ENV: 'production',
         PATH: process.env.PATH,
       },
-      // Use the project root as working directory
-      cwd: this.resourcesPath,
+      // Use the app directory as working directory for packaged app
+      cwd: fs.existsSync(cwd) ? cwd : this.resourcesPath,
       stdio: ['pipe', 'pipe', 'pipe'],
       detached: false,
       shell: false,
@@ -197,6 +202,13 @@ class GatewayManager implements GatewayProcessHandle {
     if (fs.existsSync(distEntry)) {
       console.log('[Gateway] Using dist entry:', distEntry);
       return distEntry;
+    }
+
+    // For packaged app, try resources/app/index.js
+    const appEntry = path.join(this.resourcesPath, 'app', 'index.js');
+    if (fs.existsSync(appEntry)) {
+      console.log('[Gateway] Using app entry:', appEntry);
+      return appEntry;
     }
 
     // For packaged app, app might be in resources/app/dist
