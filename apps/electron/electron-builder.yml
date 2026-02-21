@@ -1,0 +1,87 @@
+appId: ai.openclaw.desktop
+productName: OpenClaw
+copyright: Copyright © 2024 OpenClaw
+
+directories:
+  output: dist-electron
+  buildResources: build
+
+files:
+  - "!**/*.{ts,map}"
+  - "!**/node_modules/*/{CHANGELOG.md,README.md,readme.md,readme}"
+  - "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}"
+  - "!**/node_modules/.bin"
+  # Include compiled JavaScript
+  - "dist/**/*"
+  # Include resources
+  - "resources/**/*"
+
+extraResources:
+  - from: "../../bundled-tools"
+    to: "tools"
+    filter:
+      - "**/*"
+  - from: "../../dist"
+    to: "app"
+    filter:
+      - "**/*"
+
+asar: true
+
+asarUnpack:
+  - "dist/**/*"  # Unpack our code to allow it to run
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: OpenClaw-Setup-${version}.${ext}
+  icon: resources/icon.ico
+  publisherName: OpenClaw
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: OpenClaw
+  installerIcon: resources/icon.ico
+  uninstallerIcon: resources/icon.ico
+  license: ../../LICENSE
+  include: build/installer.nsh
+
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  artifactName: OpenClaw-${version}-${arch}.${ext}
+  icon: resources/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+
+dmg:
+  title: "OpenClaw ${version}"
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+protocols:
+  - name: OpenClaw
+    schemes:
+      - openclaw
+    role: Editor
+
+publish:
+  provider: github
+  owner: openclaw
+  repo: openclaw
+  releaseType: release

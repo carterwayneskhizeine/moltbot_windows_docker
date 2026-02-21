@@ -1,0 +1,42 @@
+# Dockerfile for building OpenClaw Electron Windows binaries
+# Uses electronuserland/builder Wine image for cross-platform builds
+
+FROM electronuserland/builder:wine
+
+# Set working directory
+WORKDIR /project
+
+# Set environment
+ENV NODE_ENV=production
+ENV ELECTRON_CACHE=/root/.cache/electron
+ENV ELECTRON_BUILDER_CACHE=/root/.cache/electron-builder
+
+# Copy pnpm configuration
+COPY package.json pnpm-lock.yaml ./
+COPY pnpm-workspace.yaml ./
+
+# Install pnpm
+RUN npm install -g pnpm@10
+
+# Install project dependencies
+RUN pnpm install --frozen-lockfile --config.node-linker=hoisted
+
+# Copy source code
+COPY . .
+
+# Build OpenClaw CLI
+RUN pnpm build
+
+# Build UI
+RUN pnpm ui:build
+
+# Install Electron dependencies and build
+WORKDIR /project/apps/electron
+RUN pnpm install
+RUN pnpm dist --win --x64
+
+# Copy output to a location that can be easily mounted
+RUN mkdir -p /output && cp -r dist-electron/* /output/
+
+# Set the output directory as a volume
+VOLUME ["/output"]

@@ -1,0 +1,27 @@
+{
+  "name": "openclaw-electron",
+  "version": "2026.2.20",
+  "description": "OpenClaw Desktop Application",
+  "main": "dist/main.js",
+  "private": true,
+  "author": "OpenClaw",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc && electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win --x64",
+    "dist:mac": "electron-builder --mac --universal",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "electron-store": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenClaw - Starting</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: transparent;
+      overflow: hidden;
+      width: 500px;
+      height: 400px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      -webkit-app-region: drag;
+    }
+
+    .container {
+      text-align: center;
+      color: white;
+    }
+
+    .logo {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 24px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 48px;
+      font-weight: bold;
+      box-shadow: 0 10px 40px rgba(102, 126, 234, 0.4);
+    }
+
+    h1 {
+      font-size: 32px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    }
+
+    .subtitle {
+      font-size: 14px;
+      opacity: 0.8;
+      margin-bottom: 32px;
+    }
+
+    .progress-container {
+      width: 200px;
+      margin: 0 auto;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      margin: 0 auto 16px;
+      border: 3px solid rgba(255, 255, 255, 0.2);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .status {
+      font-size: 13px;
+      opacity: 0.7;
+      margin-top: 16px;
+    }
+
+    .tool-status {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 8px;
+      font-size: 12px;
+    }
+
+    .tool-status .indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .tool-status .indicator.ok {
+      background: #4ade80;
+    }
+
+    .tool-status .indicator.error {
+      background: #f87171;
+    }
+
+    .error {
+      color: #fca5a5;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">OC</div>
+    <h1>OpenClaw</h1>
+    <p class="subtitle">Starting...</p>
+
+    <div class="progress-container">
+      <div class="spinner"></div>
+    </div>
+
+    <p class="status" id="status">Initializing...</p>
+    <div id="tools-status"></div>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const toolsStatusEl = document.getElementById('tools-status');
+
+    // Update status from main process
+    if (window.electronAPI) {
+      window.electronAPI.splash.onToolsStatus((status) => {
+        updateToolsStatus(status);
+      });
+    }
+
+    function updateToolsStatus(status) {
+      const tools = ['nodejs', 'python', 'git', 'ffmpeg'];
+      const allInstalled = tools.every(tool => status[tool]?.installed);
+
+      if (allInstalled) {
+        statusEl.textContent = 'All tools ready. Starting Gateway...';
+      } else {
+        statusEl.textContent = 'Checking bundled tools...';
+      }
+
+      // Show individual tool status
+      toolsStatusEl.innerHTML = tools.map(tool => {
+        const installed = status[tool]?.installed;
+        const indicatorClass = installed ? 'ok' : 'error';
+        const label = tool.charAt(0).toUpperCase() + tool.slice(1);
+        return `
+          <div class="tool-status">
+            <span class="indicator ${indicatorClass}"></span>
+            <span>${label}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Simulate loading progress
+    const messages = [
+      'Initializing...',
+      'Checking bundled tools...',
+      'Starting Gateway...',
+      'Almost ready...',
+    ];
+
+    let index = 0;
+    const interval = setInterval(() => {
+      if (index < messages.length) {
+        if (!toolsStatusEl.hasChildNodes()) {
+          statusEl.textContent = messages[index];
+        }
+        index++;
+      } else {
+        clearInterval(interval);
+      }
+    }, 800);
+  </script>
+</body>
+</html>
