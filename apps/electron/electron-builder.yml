@@ -29,11 +29,7 @@ extraResources:
   - from: "../../node_modules"
     to: "app/node_modules"
     filter:
-      - "!**/*.{md,txt,hbs,map}"
-      - "!**/{test,__tests__,tests,powered-test,example,examples}"
-      - "!**/.bin"
-      - "!**/CHANGELOG*"
-      - "!**/README*"
+      - "**/*"
 
 asar: true
 
