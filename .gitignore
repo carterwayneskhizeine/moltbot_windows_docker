@@ -118,3 +118,5 @@ apps/electron/dist/
 
 # Generated protocol schema (produced via pnpm protocol:gen)
 dist/protocol.schema.json
+nul
+apps/electron/openclaw-electron-2026.2.22.tgz
