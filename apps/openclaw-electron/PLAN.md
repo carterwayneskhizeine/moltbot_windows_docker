@@ -51,7 +51,7 @@
 - 入口文件（dist/entry.js）
 - node_modules 依赖目录（已清理非必要文件）
 
-首次启动时自动解压到用户数据目录（Electron `app.getPath('userData')`），并创建命令链接 `openclaw.cmd`，使 `openclaw` 命令全局可用（无需管理员权限）。
+首次启动时自动解压到用户数据目录（Electron `app.getPath('userData')`），并在该目录下创建命令链接 `openclaw.cmd`。为了使 `openclaw` 命令全局可用，需在打包配置（NSIS）中提供一个自定义安装脚本，在应用安装期间将该目录（如 `%APPDATA%/OpenClaw/resources`）追加到用户的系统环境变量 `PATH` 中。
 
 解压目录结构（Windows）：
 ```
@@ -87,7 +87,7 @@ Gateway 进程作为主进程的子进程运行，使用内置 Node.js 运行时
 
 - 记录子进程 PID，通过信号优雅关闭
 - 超时未响应则强制终止
-- 启动前检测端口占用并清理旧进程
+- 启动前检测端口占用情况。若端口（如 18789）被占用，需安全地验证该占用进程是否是我们以前残留的 `node` Gateway 进程（通过命令行参数特征匹配），确认为内部残留后才执行清理。若为第三方进程占用，则在 UI 提示警告并允许配置新端口，绝不强杀无关进程。
 - 健康检查失败后自动重启
 
 ### 4.4 资源打包
@@ -144,6 +144,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
+  include: build/installer.nsh # 引入自定义 NSIS 脚本用于将资源目录写入用户的环境变量 PATH
 ```
 
 ### 5.2 支持的平台
@@ -205,9 +206,11 @@ rm -rf bundled/openclaw
 **更新流程**：
 1. 启动时检查更新服务器（可配置 URL）
 2. 对比本地版本与服务器版本
-3. 如有新版本，下载 openclaw.tar.gz
-4. 解压覆盖到用户数据目录
-5. 更新版本记录
+3. 如有新版本，下载 `openclaw.tar.gz` 到操作系统的临时目录
+4. **强制向 Gateway 管理器发送停止命令，确保原 Node 进程已完全退出且释放文件句柄（防止 Windows 下报 `EBUSY` 文件被占用错误）**
+5. 使用第三方 npm 解压包（如 `tar`）将压缩包解压并覆盖到用户数据目录
+6. **重启 Gateway 进程**
+7. 更新版本记录
 
 **更新服务器配置**：
 ```json
@@ -237,6 +240,8 @@ rm -rf bundled/openclaw
 ## 六、构建与运行
 
 ### 6.1 开发模式
+
+开发环境下（通过判断 `app.isPackaged === false` 识别），不要执行繁琐的 `tar.gz` 解压落盘操作。Electron 主进程应直接基于本地仓库源码或 `node_modules` 启动 Gateway，以保证极速的热重载和开发体验。
 
 开发环境构建和运行：
 
@@ -313,7 +318,8 @@ apps/openclaw-electron/
 
 在 `electron/gateway-manager.ts` 实现：
 
-- 端口占用检测
+- 端口占用检测与**安全校验**（只静默 kill 属于我们自己的僵尸进程进程，防止误杀第三方服务）
+- 根据 `app.isPackaged` 智能指向入口文件（开发时指本地源码，生产时指 `%APPDATA%` 解压路径）
 - 进程启动/停止/重启
 - 健康检查（HTTP /health）
 - 自动重启机制
@@ -338,8 +344,9 @@ apps/openclaw-electron/
 
 在 `electron/resource-manager.ts` 实现：
 
+- 发现及引入第三方解压库如 `npm install tar`（**千万注意：不要**使用 `child_process.exec('tar -xzf ...')` 来调用系统命令，因为较老版本 Windows 不支持）
 - 检测压缩包是否存在
-- 首次启动时解压到 `%APPDATA%/OpenClaw/resources/openclaw/`
+- 首次启动时利用 `tar` 包纯 JS 跨平台解压至 `%APPDATA%/OpenClaw/resources/openclaw/`
 - 创建命令链接 `openclaw.cmd`（Windows）或软链接（macOS/Linux）
 - 验证解压后的目录完整性
 - 返回解压后的资源路径
