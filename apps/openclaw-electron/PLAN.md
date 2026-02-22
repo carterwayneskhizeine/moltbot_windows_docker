@@ -16,7 +16,15 @@
 
 ### 3.2 Gateway 管理
 
-应用启动时自动在后台启动 OpenClaw Gateway 进程，该进程负责提供 WebSocket 和 HTTP 服务。当用户关闭主窗口时，Gateway 进程不会被自动停止，，需要在托盘点击退出停止资源才会释放。
+应用启动时自动在后台启动 OpenClaw Gateway 进程，该进程负责提供 WebSocket 和 HTTP 服务。Gateway 管理功能包括：
+
+- 端口占用检测与旧进程终止
+- 健康检查机制（HTTP 请求验证）
+- 自动重启（连续失败后）
+- 实时日志输出到 UI
+- 支持外部 Gateway 连接
+
+当用户关闭主窗口时，Gateway 进程不会被自动停止，需要在托盘点击退出停止资源才会释放。
 
 ### 3.3 系统托盘
 
@@ -27,9 +35,21 @@
 
 选择"退出"选项时，会先停止 Gateway 进程，然后关闭应用。
 
-### 3.4 OpenClaw 文件管理
+### 3.4 内置 Node.js 运行时
 
-应用的资源目录中包含一个 OpenClaw 压缩包文件。应用首次启动时，会自动检查并解压该压缩包到指定目录。解压后的文件包括 OpenClaw 的构建产物、入口文件和依赖模块，这些文件会被用于启动 Gateway 服务。
+应用内置独立的 Node.js 24.13.1 运行时，无需依赖系统 Node.js 版本：
+
+- Windows: `bundled/node/node.exe`
+- macOS/Linux: `bundled/node/node`
+- 开发环境：优先使用 bundled 目录，回退到系统 node
+
+### 3.5 OpenClaw 资源管理
+
+应用将 OpenClaw 预解压到 `bundled/openclaw/` 目录，包含：
+
+- dist 目录中的构建产物
+- 入口文件（dist/entry.js）
+- node_modules 依赖目录（已清理非必要文件）
 
 ## 四、技术架构
 
@@ -38,10 +58,11 @@
 主进程负责以下核心任务：
 
 - 创建和管理应用窗口
-- 在后台启动 Gateway 子进程
+- 在后台启动 Gateway 子进程（使用内置 Node.js）
 - 监听窗口事件并做出响应
 - 管理系统托盘图标和菜单
 - 应用退出时清理资源
+- Gateway 健康检查与自动重启
 
 ### 4.2 BrowserWindow
 
@@ -49,17 +70,67 @@
 
 ### 4.3 子进程管理
 
-Gateway 进程作为主进程的子进程运行。主进程记录该子进程的 PID，当需要停止 Gateway 时，通过进程终止信号优雅地关闭它。如果进程未能及时响应，系统会强制终止。
+Gateway 进程作为主进程的子进程运行，使用内置 Node.js 运行时启动。管理特性：
+
+- 记录子进程 PID，通过信号优雅关闭
+- 超时未响应则强制终止
+- 启动前检测端口占用并清理旧进程
+- 健康检查失败后自动重启
 
 ### 4.4 资源打包
 
-应用的打包配置中，只包含 OpenClaw 的压缩包文件，不直接包含解压后的文件列表。这种方式可以简化打包流程，减少打包时间，并降低打包过程中出现错误的概率。
+使用 electron-builder 将以下资源打包到 extraResources：
+
+```
+extraResources:
+  - from: bundled/node/
+    to: bundled/node/
+    filter: ["**/*"]
+  - from: bundled/openclaw/
+    to: bundled/openclaw/
+    filter: ["**/*"]
+```
+
+**优势**：无需运行时解压，启动更快，减少用户等待时间。
 
 ## 五、打包与发布
 
 ### 5.1 打包配置
 
-使用 electron-builder 进行应用打包。打包时会在 extraResources 配置中指定 OpenClaw 压缩包的位置，该压缩包会被复制到最终的应用资源目录中。
+使用 electron-builder 进行应用打包，配置参考：
+
+```yaml
+appId: com.openclaw.desktop
+productName: "OpenClaw"
+copyright: MIT License
+directories:
+  output: dist
+  buildResources: assets
+
+files:
+  - dist/**/*
+  - dist-electron/**/*
+
+extraResources:
+  - from: bundled/node/
+    to: bundled/node/
+    filter: ["**/*"]
+  - from: bundled/openclaw/
+    to: bundled/openclaw/
+    filter: ["**/*"]
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: assets/icon.ico
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+```
 
 ### 5.2 支持的平台
 
@@ -69,52 +140,165 @@ Gateway 进程作为主进程的子进程运行。主进程记录该子进程的
 - macOS 系统生成 DMG 镜像
 - Linux 系统生成 AppImage
 
-### 5.3 压缩包准备
+### 5.3 资源准备流程
 
-在打包之前，需要手动创建 OpenClaw 压缩包。该压缩包包含三个主要部分：dist 目录中的构建产物、openclaw.mjs 入口文件、以及 node_modules 依赖目录。创建完成后，将压缩包放置在项目指定的路径中，打包工具会自动将其包含进最终的应用里。
+#### 5.3.1 下载 Node.js 运行时
+
+自动下载 Node.js 24.13.1 到 `bundled/node/`：
+
+- Windows: `node-v24.13.1-win-x64/node.exe`
+- macOS: `node-v24.13.1-darwin-x64/node` 或 `node-v24.13.1-darwin-arm64/node`
+- Linux: `node-v24.13.1-linux-x64/node`
+- 检查文件完整性（大小验证）
+- 已存在则跳过下载
+
+#### 5.3.2 安装 OpenClaw
+
+支持两种安装策略：
+
+**策略 1：从全局 npm 复制（最快）**
+```bash
+npm root -g          # 获取全局安装路径
+cp -R $GLOBAL/openclaw bundled/openclaw/
+```
+
+**策略 2：npm pack + extract + npm install（备用）**
+```bash
+npm pack openclaw --pack-destination .
+tar -xzf openclaw-*.tgz
+cd package
+npm install --production --ignore-scripts
+```
+
+自动清理非必要文件：
+- 删除 test/tests/__tests__/.github/example/examples 目录
+- 删除 changelog.md/history.md/*.map 文件
 
 ## 六、构建与运行
 
 ### 6.1 开发模式
 
-在开发阶段，可以通过以下命令启动应用：首先进入项目目录，安装依赖，然后运行开发服务器。
+开发环境构建和运行：
+
+```bash
+cd apps/openclaw-electron
+npm install
+npm run dev
+```
+
+使用 Vite + vite-plugin-electron 热重载开发。
 
 ### 6.2 生产打包
 
-完成开发后，使用构建命令生成安装包。打包完成后，在 dist 目录中可以找到生成的安装文件。
+完整构建流程：
+
+```bash
+npm run build:installer
+```
+
+该命令执行以下步骤：
+
+1. `prepare:node` - 下载 Node.js 运行时
+2. `prepare:openclaw` - 安装 OpenClaw
+3. `vite build` - 编译前端 + Electron 主进程
+4. `electron-builder` - 打包安装包
+
+最终安装包位于 `dist/` 目录。
 
 ## 七、实施步骤
 
 ### 第一步：创建项目结构
 
-在 apps 文件夹下创建 openclaw-electron 目录，并在其中建立 src 文件夹用于存放源代码。
+```
+apps/openclaw-electron/
+├── src/                    # 渲染进程源码
+├── electron/               # 主进程源码
+│   ├── main.ts            # 主进程入口
+│   ├── gateway-manager.ts # Gateway 管理
+│   ├── node-runtime.ts    # Node.js 路径管理
+│   └── preload.ts         # 预加载脚本
+├── assets/                 # 图标等资源
+├── scripts/                # 构建脚本
+│   ├── prepare-node.js
+│   ├── prepare-openclaw.js
+│   └── build-installer.js
+├── bundled/                # 打包资源（运行时生成）
+│   ├── node/
+│   └── openclaw/
+├── dist/                   # 打包输出
+├── package.json
+├── vite.config.ts
+└── electron-builder.yml
+```
 
 ### 第二步：配置文件
 
-在项目根目录创建 package.json 文件，配置应用的名称、版本、描述等信息，以及 electron-builder 的打包参数。配置中的 extraResources 部分指向预先准备好的 OpenClaw 压缩包。
+- `package.json` - 应用元信息和脚本
+- `electron-builder.yml` - 打包配置
+- `vite.config.ts` - Vite 构建配置
 
 ### 第三步：实现主进程
 
-在 src 目录下创建 main.js 文件，实现应用的主逻辑。主进程需要完成以下工作：检查并解压 OpenClaw 压缩包、创建应用窗口、启动 Gateway 子进程、设置系统托盘、处理窗口事件。
+在 `electron/main.ts` 实现主逻辑：
 
-### 第四步：实现托盘逻辑
+- GatewayManager 初始化（端口 18789）
+- 创建应用窗口（加载 Control UI）
+- 启动 Gateway 子进程
+- 设置系统托盘
+- IPC 通信处理
+- 窗口事件处理
 
-在 src 目录下创建 tray.js 文件，实现系统托盘的相关功能，包括托盘图标的创建、右键菜单的设置、以及菜单项点击事件的处理。
+### 第四步：实现 Gateway 管理器
 
-### 第五步：创建预加载脚本
+在 `electron/gateway-manager.ts` 实现：
 
-在 src 目录下创建 preload.js 文件，用于在渲染进程和安全上下文之间建立桥梁，实现主进程和渲染进程之间的通信。
+- 端口占用检测
+- 进程启动/停止/重启
+- 健康检查（HTTP /health）
+- 自动重启机制
+- 日志输出
 
-### 第六步：准备资源
+### 第五步：实现 Node.js 运行时管理
 
-手动创建 OpenClaw 压缩包，确保其中包含正确的文件结构，然后将压缩包放置在项目指定的路径中。
+在 `electron/node-runtime.ts` 实现：
 
-### 第七步：测试与打包
+- 智能路径切换（开发/生产）
+- 可用性检查
+- OpenClaw 路径解析
 
-完成代码编写后，首先在开发模式下运行测试，确认各项功能正常工作。测试通过后，执行打包命令生成安装包。
+### 第六步：创建预加载脚本
+
+在 `electron/preload.ts` 实现：
+
+- IPC 桥接
+- 安全上下文隔离
+
+### 第七步：准备资源脚本
+
+- `scripts/prepare-node.js` - 下载 Node.js
+- `scripts/prepare-openclaw.js` - 安装 OpenClaw
+- `scripts/build-installer.js` - 统一构建流程
+
+### 第八步：测试与打包
+
+- 开发模式测试功能
+- 运行 `npm run build:installer` 生成安装包
+- 验证安装包功能完整性
 
 ## 八、关键路径参考
 
-- OpenClaw 控制界面地址：本地 18788 端口的控制页面
+- OpenClaw 控制界面地址：本地 18789 端口的控制页面
 - Gateway 默认端口：18789
-- 压缩包解压目标目录：应用资源目录下的 openclaw 文件夹
+- Node.js 运行时：`bundled/node/node.exe`（生产）/ `bundled/node/node`（macOS/Linux）
+- OpenClaw 目录：`bundled/openclaw/`
+- Gateway 健康检查：`http://127.0.0.1:18789/health`
+
+## 九、参考项目
+
+本项目参考了 ClawWin2.0（https://github.com/wk42worldworld/ClawWin2.0）的优秀打包方案：
+
+- 独立 Node.js 运行时打包
+- 预解压资源策略
+- 智能安装脚本
+- Gateway 健康检查与自动重启
+- 统一构建流程
