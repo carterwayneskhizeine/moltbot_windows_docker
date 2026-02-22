@@ -1,12 +1,13 @@
 import { ChildProcess, spawn } from 'child_process';
 import { NodeRuntime } from './node-runtime';
 import http from 'http';
-import { app } from 'electron';
+import path from 'path';
 
 export class GatewayManager {
   private gatewayProcess: ChildProcess | null = null;
   private port = 18789;
   private isRestarting = false;
+  private stoppedByUser = false;
   private readonly maxRetries = 5;
   private retryCount = 0;
   
@@ -28,11 +29,16 @@ export class GatewayManager {
       console.log(`[GatewayManager] Node executable: ${nodePath}`);
       console.log(`[GatewayManager] Entry script: ${entryPath}`);
 
-      // We'll pass the UI port implicitly, setting PORT environment variable
-      const env = { ...process.env, PORT: String(this.port), NODE_ENV: 'production' };
+      // openclaw.mjs uses relative imports (./dist/entry.js),
+      // so cwd MUST be the directory containing openclaw.mjs (workspace root in dev, 
+      // or the extracted userData path in production).
+      const entryCwd = path.dirname(entryPath);
 
-      this.gatewayProcess = spawn(nodePath, [entryPath, 'start'], {
+      const env = { ...process.env, NODE_ENV: 'production' };
+
+      this.gatewayProcess = spawn(nodePath, [entryPath], {
         env,
+        cwd: entryCwd,
         stdio: 'pipe',
         windowsHide: true,
       });
@@ -49,7 +55,7 @@ export class GatewayManager {
         console.warn(`[GatewayManager] Process exited with code ${code}, signal ${signal}`);
         this.gatewayProcess = null;
 
-        if (!this.isRestarting && !app.isQuitting) {
+        if (!this.isRestarting && !this.stoppedByUser) {
            this.handleUnexpectedCrash();
         }
       });
@@ -62,6 +68,7 @@ export class GatewayManager {
 
   async stop(): Promise<void> {
     this.isRestarting = true;
+    this.stoppedByUser = true;
     if (this.gatewayProcess) {
       console.log('[GatewayManager] Stopping gateway process...');
       this.gatewayProcess.kill('SIGTERM');

@@ -35,18 +35,24 @@ export class NodeRuntime {
    */
   static getOpenClawEntryPath(): string {
     if (!this.isPackaged) {
-      // In development, point to the openclaw module within the monorepo
-      // Adjust path if needed. Defaulting to assuming openclaw is installed and resolvable
-      const searchPaths = [
-        path.resolve(process.cwd(), 'node_modules', 'openclaw', 'dist', 'entry.js'),
-        path.resolve(process.cwd(), '..', '..', 'node_modules', 'openclaw', 'dist', 'entry.js')
-      ];
-      
-      for (const p of searchPaths) {
-        if (fs.existsSync(p)) {
-          return p;
-        }
+      // In development: this repo IS the openclaw monorepo.
+      // The electron app lives at apps/openclaw-electron, so the workspace root
+      // is 2 levels up. Point directly to the root's openclaw.mjs (the bin entry).
+      const workspaceRoot = path.resolve(process.cwd(), '..', '..');
+      const entryPath = path.join(workspaceRoot, 'openclaw.mjs');
+
+      if (fs.existsSync(entryPath)) {
+        console.log(`[NodeRuntime] Dev mode: using workspace root entry → ${entryPath}`);
+        return entryPath;
       }
+
+      // Secondary fallback: try relative to __dirname (dist-electron/ at runtime)
+      const alt = path.resolve(__dirname, '..', '..', '..', 'openclaw.mjs');
+      if (fs.existsSync(alt)) {
+        return alt;
+      }
+
+      console.warn('[NodeRuntime] Could not locate openclaw.mjs in workspace root. Falling back to global "openclaw" command.');
       return 'openclaw'; // fallback to global bin
     }
 

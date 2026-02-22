@@ -104,3 +104,17 @@ apps/ios/LocalSigning.xcconfig
 # Generated protocol schema (produced via pnpm protocol:gen)
 dist/protocol.schema.json
 .ant-colony/
+apps/openclaw-electron/bundled/node/CHANGELOG.md
+apps/openclaw-electron/bundled/node/corepack
+apps/openclaw-electron/bundled/node/npm
+apps/openclaw-electron/bundled/node/LICENSE
+apps/openclaw-electron/bundled/node/npm.cmd
+apps/openclaw-electron/bundled/node/npm.ps1
+apps/openclaw-electron/bundled/node/npx.ps1
+apps/openclaw-electron/bundled/node/npx
+apps/openclaw-electron/bundled/node/README.md
+apps/openclaw-electron/bundled/node/npx.cmd
+apps/openclaw-electron/bundled/node/nodevars.bat
+apps/openclaw-electron/bundled/node/node.exe
+apps/openclaw-electron/bundled/node/install_tools.bat
+apps/openclaw-electron/bundled/node/corepack.cmd

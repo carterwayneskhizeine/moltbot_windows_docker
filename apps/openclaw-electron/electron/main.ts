@@ -19,7 +19,7 @@ async function createWindow() {
     height: 800,
     title: 'OpenClaw Control',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.mjs'), // Vite builds it to preload.mjs normally
+      preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
     },
@@ -50,41 +50,51 @@ async function createWindow() {
 }
 
 function createTray() {
-  // Setup tray icon path based on dev/prod
-  const iconPath = app.isPackaged 
-    ? path.join(process.resourcesPath, 'assets', 'icon.ico') 
-    : path.join(__dirname, '..', 'assets', 'icon.ico');
+  try {
+    const { nativeImage } = require('electron');
+    const fs = require('fs');
+    
+    // Setup tray icon path based on dev/prod
+    const iconPath = app.isPackaged 
+      ? path.join(process.resourcesPath, 'assets', 'icon.ico') 
+      : path.join(__dirname, '..', 'assets', 'icon.ico');
 
-  tray = new Tray(iconPath);
-  tray.setToolTip('OpenClaw Control Server');
+    // Use a fallback empty image if icon doesn't exist yet (e.g., in dev)
+    const icon = fs.existsSync(iconPath) ? iconPath : nativeImage.createEmpty();
 
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: '显示窗口 (Show Window)',
-      click: () => {
-        mainWindow?.show();
+    tray = new Tray(icon);
+    tray.setToolTip('OpenClaw Control Server');
+
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: '显示窗口 (Show Window)',
+        click: () => {
+          mainWindow?.show();
+        },
       },
-    },
-    { type: 'separator' },
-    {
-      label: '退出 (Exit)',
-      click: async () => {
-        isQuitting = true;
-        if (gatewayManager) {
-          console.log('[Main] Stopping Gateway before exit...');
-          await gatewayManager.stop();
-        }
-        app.quit();
+      { type: 'separator' },
+      {
+        label: '退出 (Exit)',
+        click: async () => {
+          isQuitting = true;
+          if (gatewayManager) {
+            console.log('[Main] Stopping Gateway before exit...');
+            await gatewayManager.stop();
+          }
+          app.quit();
+        },
       },
-    },
-  ]);
+    ]);
 
-  tray.setContextMenu(contextMenu);
-  
-  // Double-click shows window
-  tray.on('double-click', () => {
-    mainWindow?.show();
-  });
+    tray.setContextMenu(contextMenu);
+    
+    // Double-click shows window
+    tray.on('double-click', () => {
+      mainWindow?.show();
+    });
+  } catch (err) {
+    console.warn('[Main] Failed to create system tray:', err);
+  }
 }
 
 app.whenReady().then(async () => {
