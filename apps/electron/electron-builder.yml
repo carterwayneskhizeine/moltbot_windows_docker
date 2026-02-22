@@ -25,16 +25,14 @@ extraResources:
     to: "app"
     filter:
       - "**/*"
-  # Include production node_modules for runtime dependencies
-  - from: "../../node_modules"
-    to: "app/node_modules"
-    filter:
-      - "**/*"
 
 asar: true
 
+# ✅ 解包所有 node_modules，以便 Gateway 子进程可以访问依赖
+# ✅ 解包 dist 目录，因为它包含 Gateway 入口文件
 asarUnpack:
-  - "dist/**/*"  # Unpack our code to allow it to run
+  - "dist/**/*"
+  - "node_modules/**/*"
 
 win:
   target:

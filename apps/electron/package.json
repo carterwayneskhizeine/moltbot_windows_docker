@@ -1,6 +1,6 @@
 {
   "name": "openclaw-electron",
-  "version": "2026.2.20",
+  "version": "2026.2.22",
   "description": "OpenClaw Desktop Application",
   "main": "dist/main.js",
   "private": true,
@@ -17,6 +17,18 @@
   },
   "dependencies": {
     "electron-store": "^10.0.0"
+  },
+  "optionalDependencies": {
+    "@napi-rs/canvas": "^0.1.89",
+    "@lydell/node-pty": "1.2.0-beta.3",
+    "sharp": "^0.34.5",
+    "sqlite-vec": "0.1.7-alpha.2",
+    "playwright-core": "1.58.2",
+    "tslog": "^4.10.2",
+    "express": "^5.2.1",
+    "ws": "^8.19.0",
+    "undici": "^7.22.0",
+    "tar": "7.5.9"
   },
   "devDependencies": {
     "@types/node": "^25.3.0",
