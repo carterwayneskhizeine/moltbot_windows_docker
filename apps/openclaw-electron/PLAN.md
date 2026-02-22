@@ -51,15 +51,17 @@
 - 入口文件（dist/entry.js）
 - node_modules 依赖目录（已清理非必要文件）
 
-首次启动时自动解压到 `%APPDATA%/OpenClaw/resources/openclaw/` 目录，并创建命令链接 `openclaw.cmd`，使 `openclaw` 命令全局可用（无需管理员权限）。
+首次启动时自动解压到用户数据目录（Electron `app.getPath('userData')`），并创建命令链接 `openclaw.cmd`，使 `openclaw` 命令全局可用（无需管理员权限）。
 
-解压目录结构：
+解压目录结构（Windows）：
 ```
-%APPDATA%/OpenClaw/resources/
-├── openclaw/           # 解压后的 OpenClaw
-│   ├── dist/
-│   └── node_modules/
-└── openclaw.cmd        # 命令链接
+%APPDATA%/OpenClaw/
+├── resources/
+│   ├── openclaw/       # 解压后的 OpenClaw
+│   │   ├── dist/
+│   │   └── node_modules/
+│   └── openclaw.cmd    # 命令链接
+└── OpenClaw.exe.config # Electron 配置
 ```
 
 ## 四、技术架构
@@ -196,6 +198,42 @@ tar -czf bundled/openclaw.tar.gz -C bundled openclaw
 rm -rf bundled/openclaw
 ```
 
+#### 5.3.3 增量更新机制
+
+应用支持增量更新 OpenClaw 资源，无需重新安装应用：
+
+**更新流程**：
+1. 启动时检查更新服务器（可配置 URL）
+2. 对比本地版本与服务器版本
+3. 如有新版本，下载 openclaw.tar.gz
+4. 解压覆盖到用户数据目录
+5. 更新版本记录
+
+**更新服务器配置**：
+```json
+{
+  "updateUrl": "https://your-server.com/openclaw/",
+  "currentVersion": "2026.1.1"
+}
+```
+
+**更新检查逻辑**：
+- 应用启动时自动检查
+- 可在设置中手动检查更新
+- 支持静默更新（后台下载）
+
+**版本文件**：
+```
+%APPDATA%/OpenClaw/resources/version.json
+```
+内容：`{"openclaw": "2026.1.1", "checked": "2026-01-01T00:00:00Z"}`
+
+**发布更新**：
+1. 修改 OpenClaw 源码
+2. 运行 `npm run prepare:openclaw` 重新打包
+3. 上传 `openclaw.tar.gz` 和 `version.json` 到服务器
+4. 用户下次启动自动更新
+
 ## 六、构建与运行
 
 ### 6.1 开发模式
@@ -305,6 +343,8 @@ apps/openclaw-electron/
 - 创建命令链接 `openclaw.cmd`（Windows）或软链接（macOS/Linux）
 - 验证解压后的目录完整性
 - 返回解压后的资源路径
+- 启动时检查更新（对比 version.json）
+- 下载并解压更新包
 - 应用卸载时清理资源目录
 
 ### 第八步：准备资源脚本
@@ -325,7 +365,10 @@ apps/openclaw-electron/
 - Gateway 默认端口：18789
 - Node.js 运行时：`bundled/node/node.exe`（生产）/ `bundled/node/node`（macOS/Linux）
 - OpenClaw 压缩包：`bundled/openclaw.tar.gz`
-- 解压后目录：`%APPDATA%/OpenClaw/resources/openclaw/`（Windows）或 `~/Library/Application Support/OpenClaw/resources/openclaw/`（macOS）
+- 用户数据目录：`app.getPath('userData')`
+  - Windows：`%APPDATA%/OpenClaw/`
+  - macOS：`~/Library/Application Support/OpenClaw/`
+- 解压后目录：`%APPDATA%/OpenClaw/resources/openclaw/`（Windows）
 - 命令链接：`%APPDATA%/OpenClaw/resources/openclaw.cmd`（Windows）
 - Gateway 健康检查：`http://127.0.0.1:18789/health`
 
