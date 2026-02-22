@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { escapeRegExp, formatEnvelopeTimestamp } from "../../test/helpers/envelope-timestamp.js";
 import { withEnvAsync } from "../test-utils/env.js";
 import {
+  createWebListenerFactoryCapture,
   installWebAutoReplyTestHomeHooks,
   installWebAutoReplyUnitTestHooks,
   makeSessionStore,
@@ -24,6 +25,7 @@ function startMonitorWebChannel(params: {
   listenerFactory: unknown;
   sleep: ReturnType<typeof vi.fn>;
   signal?: AbortSignal;
+  heartbeatSeconds?: number;
   reconnect?: { initialMs: number; maxMs: number; maxAttempts: number; factor: number };
 }) {
   const runtime = createRuntime();
@@ -36,7 +38,7 @@ function startMonitorWebChannel(params: {
     runtime as never,
     params.signal ?? controller.signal,
     {
-      heartbeatSeconds: 1,
+      heartbeatSeconds: params.heartbeatSeconds ?? 1,
       reconnect: params.reconnect ?? { initialMs: 10, maxMs: 10, maxAttempts: 3, factor: 1.1 },
       sleep: params.sleep,
     },
@@ -125,6 +127,7 @@ describe("web auto-reply", () => {
     try {
       const sleep = vi.fn(async () => {});
       const closeResolvers: Array<(reason: unknown) => void> = [];
+      const signalCloseSpy = vi.fn();
       let capturedOnMessage:
         | ((msg: import("./inbound.js").WebInboundMessage) => Promise<void>)
         | undefined;
@@ -141,14 +144,18 @@ describe("web auto-reply", () => {
           return {
             close: vi.fn(),
             onClose,
-            signalClose: (reason?: unknown) => resolveClose(reason),
+            signalClose: (reason?: unknown) => {
+              signalCloseSpy(reason);
+              resolveClose(reason);
+            },
           };
         },
       );
-      const { controller, run } = startMonitorWebChannel({
+      const { runtime, controller, run } = startMonitorWebChannel({
         monitorWebChannelFn: monitorWebChannel as never,
         listenerFactory,
         sleep,
+        heartbeatSeconds: 60,
       });
 
       await Promise.resolve();
@@ -176,8 +183,15 @@ describe("web auto-reply", () => {
       await Promise.resolve();
 
       await vi.advanceTimersByTimeAsync(1);
-      await Promise.resolve();
-      expect(listenerFactory).toHaveBeenCalledTimes(2);
+      expect(signalCloseSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 499, isLoggedOut: false, error: "watchdog-timeout" }),
+      );
+      for (let i = 0; i < 20 && listenerFactory.mock.calls.length < 2; i += 1) {
+        await vi.advanceTimersByTimeAsync(50);
+        await Promise.resolve();
+      }
+      expect(listenerFactory.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(runtime.error).toHaveBeenCalledWith(expect.stringContaining("Retry 1"));
 
       controller.abort();
       closeResolvers[1]?.({ status: 499, isLoggedOut: false });
@@ -248,15 +262,7 @@ describe("web auto-reply", () => {
         const sendComposing = vi.fn();
         const resolver = vi.fn().mockResolvedValue({ text: "ok" });
 
-        let capturedOnMessage:
-          | ((msg: import("./inbound.js").WebInboundMessage) => Promise<void>)
-          | undefined;
-        const listenerFactory = async (opts: {
-          onMessage: (msg: import("./inbound.js").WebInboundMessage) => Promise<void>;
-        }) => {
-          capturedOnMessage = opts.onMessage;
-          return { close: vi.fn() };
-        };
+        const capture = createWebListenerFactoryCapture();
 
         setLoadConfigMock(() => ({
           agents: {
@@ -267,7 +273,8 @@ describe("web auto-reply", () => {
           session: { store: store.storePath },
         }));
 
-        await monitorWebChannel(false, listenerFactory as never, false, resolver);
+        await monitorWebChannel(false, capture.listenerFactory as never, false, resolver);
+        const capturedOnMessage = capture.getOnMessage();
         expect(capturedOnMessage).toBeDefined();
 
         // Two messages from the same sender with fixed timestamps
