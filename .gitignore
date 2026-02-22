@@ -109,10 +109,12 @@ package-lock.json
 
 # Local iOS signing overrides
 apps/ios/LocalSigning.xcconfig
-
 # boundled-tools
 bundled-tools/
 
 # Electron build artifacts
 apps/electron/dist-electron/
 apps/electron/dist/
+
+# Generated protocol schema (produced via pnpm protocol:gen)
+dist/protocol.schema.json
