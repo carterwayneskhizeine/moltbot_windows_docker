@@ -2,63 +2,56 @@ import { app } from 'electron';
 import path from 'path';
 import fs from 'fs';
 
+export interface StartCommand {
+  /** The executable to spawn (e.g. 'pnpm', 'node', 'C:\...\node.exe') */
+  command: string;
+  /** Arguments to pass to the executable */
+  args: string[];
+  /** Working directory for the spawned process */
+  cwd: string;
+}
+
 export class NodeRuntime {
-  private static isPackaged = app.isPackaged;
-
-  /**
-   * Get the Node.js executable path depending on environment
-   */
-  static getNodePath(): string {
-    if (!this.isPackaged) {
-      // In development, use the electron's built-in node, or system node
-      return process.env.NODE_PATH || 'node';
-    }
-
-    // In production, use the bundled node
-    const isWindows = process.platform === 'win32';
-    const nodeExecutable = isWindows ? 'node.exe' : 'node';
-    
-    // extraResources are located in process.resourcesPath
-    // Our electron-builder config puts them in: resources/bundled/node/
-    const bundledNodePath = path.join(process.resourcesPath, 'bundled', 'node', nodeExecutable);
-    
-    if (fs.existsSync(bundledNodePath)) {
-      return bundledNodePath;
-    }
-    
-    console.warn(`[NodeRuntime] Bundled Node.js not found at ${bundledNodePath}, falling back to system node`);
-    return 'node';
+  private static get isPackaged() {
+    return app.isPackaged;
   }
 
   /**
-   * Get the OpenClaw entry point path depending on environment
+   * Returns the full command needed to start the OpenClaw Gateway.
+   *
+   * Dev  : pnpm openclaw gateway start  (cwd = workspace root)
+   * Prod : bundledNode openclaw.mjs gateway start  (cwd = extracted openclaw dir)
    */
-  static getOpenClawEntryPath(): string {
+  static getGatewayStartCommand(): StartCommand {
     if (!this.isPackaged) {
-      // In development: this repo IS the openclaw monorepo.
-      // The electron app lives at apps/openclaw-electron, so the workspace root
-      // is 2 levels up. Point directly to the root's openclaw.mjs (the bin entry).
+      // Workspace root is 2 levels above apps/openclaw-electron
       const workspaceRoot = path.resolve(process.cwd(), '..', '..');
-      const entryPath = path.join(workspaceRoot, 'openclaw.mjs');
-
-      if (fs.existsSync(entryPath)) {
-        console.log(`[NodeRuntime] Dev mode: using workspace root entry → ${entryPath}`);
-        return entryPath;
-      }
-
-      // Secondary fallback: try relative to __dirname (dist-electron/ at runtime)
-      const alt = path.resolve(__dirname, '..', '..', '..', 'openclaw.mjs');
-      if (fs.existsSync(alt)) {
-        return alt;
-      }
-
-      console.warn('[NodeRuntime] Could not locate openclaw.mjs in workspace root. Falling back to global "openclaw" command.');
-      return 'openclaw'; // fallback to global bin
+      console.log(`[NodeRuntime] Dev mode → pnpm openclaw gateway start (cwd: ${workspaceRoot})`);
+      return {
+        command: 'pnpm',
+        args: ['openclaw', 'gateway', 'start'],
+        cwd: workspaceRoot,
+      };
     }
 
-    // In production, it is extracted to userData
-    // e.g. %APPDATA%/OpenClaw/resources/openclaw/dist/entry.js
+    // Production: use bundled Node.js + extracted openclaw package
+    const isWindows = process.platform === 'win32';
+    const nodeExecutable = isWindows ? 'node.exe' : 'node';
+    const bundledNodePath = path.join(process.resourcesPath, 'bundled', 'node', nodeExecutable);
+
+    const nodePath = fs.existsSync(bundledNodePath)
+      ? bundledNodePath
+      : 'node'; // fallback to system node
+
     const userDataPath = app.getPath('userData');
-    return path.join(userDataPath, 'resources', 'openclaw', 'dist', 'entry.js');
+    const openClawDir = path.join(userDataPath, 'resources', 'openclaw');
+    const entryPath = path.join(openClawDir, 'openclaw.mjs');
+
+    console.log(`[NodeRuntime] Prod mode → ${nodePath} openclaw.mjs gateway start (cwd: ${openClawDir})`);
+    return {
+      command: nodePath,
+      args: [entryPath, 'gateway', 'start'],
+      cwd: openClawDir,
+    };
   }
 }

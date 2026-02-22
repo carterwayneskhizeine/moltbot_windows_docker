@@ -6011,45 +6011,40 @@ node "$(dirname "$0")/openclaw/dist/entry.js" "$@"`;
   }
 }
 class NodeRuntime {
+  static get isPackaged() {
+    return electron.app.isPackaged;
+  }
   /**
-   * Get the Node.js executable path depending on environment
+   * Returns the full command needed to start the OpenClaw Gateway.
+   *
+   * Dev  : pnpm openclaw gateway start  (cwd = workspace root)
+   * Prod : bundledNode openclaw.mjs gateway start  (cwd = extracted openclaw dir)
    */
-  static getNodePath() {
+  static getGatewayStartCommand() {
     if (!this.isPackaged) {
-      return process.env.NODE_PATH || "node";
+      const workspaceRoot = path$7.resolve(process.cwd(), "..", "..");
+      console.log(`[NodeRuntime] Dev mode → pnpm openclaw gateway start (cwd: ${workspaceRoot})`);
+      return {
+        command: "pnpm",
+        args: ["openclaw", "gateway", "start"],
+        cwd: workspaceRoot
+      };
     }
     const isWindows2 = process.platform === "win32";
     const nodeExecutable = isWindows2 ? "node.exe" : "node";
     const bundledNodePath = path$7.join(process.resourcesPath, "bundled", "node", nodeExecutable);
-    if (fs$a.existsSync(bundledNodePath)) {
-      return bundledNodePath;
-    }
-    console.warn(`[NodeRuntime] Bundled Node.js not found at ${bundledNodePath}, falling back to system node`);
-    return "node";
-  }
-  /**
-   * Get the OpenClaw entry point path depending on environment
-   */
-  static getOpenClawEntryPath() {
-    if (!this.isPackaged) {
-      const workspaceRoot = path$7.resolve(process.cwd(), "..", "..");
-      const entryPath = path$7.join(workspaceRoot, "openclaw.mjs");
-      if (fs$a.existsSync(entryPath)) {
-        console.log(`[NodeRuntime] Dev mode: using workspace root entry → ${entryPath}`);
-        return entryPath;
-      }
-      const alt = path$7.resolve(__dirname, "..", "..", "..", "openclaw.mjs");
-      if (fs$a.existsSync(alt)) {
-        return alt;
-      }
-      console.warn('[NodeRuntime] Could not locate openclaw.mjs in workspace root. Falling back to global "openclaw" command.');
-      return "openclaw";
-    }
+    const nodePath = fs$a.existsSync(bundledNodePath) ? bundledNodePath : "node";
     const userDataPath = electron.app.getPath("userData");
-    return path$7.join(userDataPath, "resources", "openclaw", "dist", "entry.js");
+    const openClawDir = path$7.join(userDataPath, "resources", "openclaw");
+    const entryPath = path$7.join(openClawDir, "openclaw.mjs");
+    console.log(`[NodeRuntime] Prod mode → ${nodePath} openclaw.mjs gateway start (cwd: ${openClawDir})`);
+    return {
+      command: nodePath,
+      args: [entryPath, "gateway", "start"],
+      cwd: openClawDir
+    };
   }
 }
-__publicField(NodeRuntime, "isPackaged", electron.app.isPackaged);
 class GatewayManager {
   constructor(onReady) {
     __publicField(this, "gatewayProcess", null);
@@ -6066,26 +6061,26 @@ class GatewayManager {
       console.log("[GatewayManager] Gateway is already running.");
       return;
     }
+    this.stoppedByUser = false;
     try {
-      await this.checkAndClearPort();
-      const nodePath = NodeRuntime.getNodePath();
-      const entryPath = NodeRuntime.getOpenClawEntryPath();
+      const { command, args, cwd } = NodeRuntime.getGatewayStartCommand();
       console.log(`[GatewayManager] Starting Gateway...`);
-      console.log(`[GatewayManager] Node executable: ${nodePath}`);
-      console.log(`[GatewayManager] Entry script: ${entryPath}`);
-      const entryCwd = path$7.dirname(entryPath);
-      const env = { ...process.env, NODE_ENV: "production" };
-      this.gatewayProcess = child_process.spawn(nodePath, [entryPath], {
+      console.log(`[GatewayManager] Command: ${command} ${args.join(" ")}`);
+      console.log(`[GatewayManager] CWD: ${cwd}`);
+      const env = { ...process.env };
+      this.gatewayProcess = child_process.spawn(command, args, {
         env,
-        cwd: entryCwd,
+        cwd,
         stdio: "pipe",
-        windowsHide: true
+        windowsHide: true,
+        // On Windows, pnpm is a .cmd script and needs shell: true
+        shell: process.platform === "win32"
       });
       (_a = this.gatewayProcess.stdout) == null ? void 0 : _a.on("data", (data) => {
-        console.log(`[Gateway stdout]: ${data.toString()}`);
+        console.log(`[Gateway stdout]: ${data.toString().trimEnd()}`);
       });
       (_b = this.gatewayProcess.stderr) == null ? void 0 : _b.on("data", (data) => {
-        console.error(`[Gateway stderr]: ${data.toString()}`);
+        console.error(`[Gateway stderr]: ${data.toString().trimEnd()}`);
       });
       this.gatewayProcess.on("exit", (code, signal) => {
         console.warn(`[GatewayManager] Process exited with code ${code}, signal ${signal}`);
@@ -6131,12 +6126,16 @@ class GatewayManager {
     const maxAttempts = 30;
     let attempts = 0;
     const interval = setInterval(() => {
+      if (this.stoppedByUser) {
+        clearInterval(interval);
+        return;
+      }
       attempts++;
       http.get(checkUrl, (res) => {
         if (res.statusCode === 200) {
           clearInterval(interval);
           this.retryCount = 0;
-          console.log(`[GatewayManager] Gateway is healthy and ready at port ${this.port}`);
+          console.log(`[GatewayManager] Gateway is healthy at port ${this.port}`);
           this.onReady(`http://127.0.0.1:${this.port}`);
         }
       }).on("error", () => {
@@ -6146,9 +6145,6 @@ class GatewayManager {
         }
       });
     }, 1e3);
-  }
-  async checkAndClearPort() {
-    return Promise.resolve();
   }
 }
 let mainWindow = null;

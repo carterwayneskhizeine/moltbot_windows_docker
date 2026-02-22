@@ -10,7 +10,7 @@ export class GatewayManager {
   private stoppedByUser = false;
   private readonly maxRetries = 5;
   private retryCount = 0;
-  
+
   constructor(private onReady: (url: string) => void) {}
 
   async start(): Promise<void> {
@@ -19,36 +19,32 @@ export class GatewayManager {
       return;
     }
 
-    try {
-      await this.checkAndClearPort();
+    this.stoppedByUser = false;
 
-      const nodePath = NodeRuntime.getNodePath();
-      const entryPath = NodeRuntime.getOpenClawEntryPath();
+    try {
+      const { command, args, cwd } = NodeRuntime.getGatewayStartCommand();
 
       console.log(`[GatewayManager] Starting Gateway...`);
-      console.log(`[GatewayManager] Node executable: ${nodePath}`);
-      console.log(`[GatewayManager] Entry script: ${entryPath}`);
+      console.log(`[GatewayManager] Command: ${command} ${args.join(' ')}`);
+      console.log(`[GatewayManager] CWD: ${cwd}`);
 
-      // openclaw.mjs uses relative imports (./dist/entry.js),
-      // so cwd MUST be the directory containing openclaw.mjs (workspace root in dev, 
-      // or the extracted userData path in production).
-      const entryCwd = path.dirname(entryPath);
+      const env = { ...process.env };
 
-      const env = { ...process.env, NODE_ENV: 'production' };
-
-      this.gatewayProcess = spawn(nodePath, [entryPath], {
+      this.gatewayProcess = spawn(command, args, {
         env,
-        cwd: entryCwd,
+        cwd,
         stdio: 'pipe',
         windowsHide: true,
+        // On Windows, pnpm is a .cmd script and needs shell: true
+        shell: process.platform === 'win32',
       });
 
       this.gatewayProcess.stdout?.on('data', (data) => {
-        console.log(`[Gateway stdout]: ${data.toString()}`);
+        console.log(`[Gateway stdout]: ${data.toString().trimEnd()}`);
       });
 
       this.gatewayProcess.stderr?.on('data', (data) => {
-        console.error(`[Gateway stderr]: ${data.toString()}`);
+        console.error(`[Gateway stderr]: ${data.toString().trimEnd()}`);
       });
 
       this.gatewayProcess.on('exit', (code, signal) => {
@@ -56,7 +52,7 @@ export class GatewayManager {
         this.gatewayProcess = null;
 
         if (!this.isRestarting && !this.stoppedByUser) {
-           this.handleUnexpectedCrash();
+          this.handleUnexpectedCrash();
         }
       });
 
@@ -69,13 +65,14 @@ export class GatewayManager {
   async stop(): Promise<void> {
     this.isRestarting = true;
     this.stoppedByUser = true;
+
     if (this.gatewayProcess) {
       console.log('[GatewayManager] Stopping gateway process...');
       this.gatewayProcess.kill('SIGTERM');
-      
+
       // Give it time to gracefully exit
       await new Promise(resolve => setTimeout(resolve, 3000));
-      
+
       if (this.gatewayProcess && !this.gatewayProcess.killed) {
         console.log('[GatewayManager] Force killing gateway process...');
         this.gatewayProcess.kill('SIGKILL');
@@ -94,40 +91,36 @@ export class GatewayManager {
         this.start();
       }, delay);
     } else {
-       console.error('[GatewayManager] Max restart retries reached. Gateway is dead.');
+      console.error('[GatewayManager] Max restart retries reached. Gateway is dead.');
     }
   }
 
   private async waitForHealth(): Promise<void> {
     const checkUrl = `http://127.0.0.1:${this.port}/health`;
-    
+
     const maxAttempts = 30;
     let attempts = 0;
 
     const interval = setInterval(() => {
+      if (this.stoppedByUser) {
+        clearInterval(interval);
+        return;
+      }
+
       attempts++;
       http.get(checkUrl, (res) => {
         if (res.statusCode === 200) {
           clearInterval(interval);
-          this.retryCount = 0; // Reset retries on successful boot
-          console.log(`[GatewayManager] Gateway is healthy and ready at port ${this.port}`);
+          this.retryCount = 0;
+          console.log(`[GatewayManager] Gateway is healthy at port ${this.port}`);
           this.onReady(`http://127.0.0.1:${this.port}`);
         }
       }).on('error', () => {
-        // Ignored, just means it's not up yet
         if (attempts >= maxAttempts) {
           clearInterval(interval);
           console.error(`[GatewayManager] Gateway failed health checks after ${maxAttempts} attempts.`);
         }
       });
-    }, 1000); // Check every second
-  }
-
-  private async checkAndClearPort(): Promise<void> {
-    // Basic port checking implementation.
-    // In production, we should specifically find PIDs listening on the port
-    // and verify their command line arguments before killing them to prevent killing 3rd party apps.
-    // For now, if the port is busy initially and we don't own it, we could change PORT.
-    return Promise.resolve();
+    }, 1000);
   }
 }
