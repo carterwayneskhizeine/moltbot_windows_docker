@@ -138,9 +138,9 @@
     "ui:install": "node scripts/ui.js install",
     "electron:build": "pnpm build && pnpm ui:build && cd apps/electron && pnpm build",
     "electron:dev": "pnpm build && pnpm ui:build && cd apps/electron && pnpm dev",
-    "electron:pack": "cd apps/electron && pnpm pack",
+    "electron:pack": "cd apps/electron && pnpm pack:dir",
     "electron:dist": "pnpm electron:build && cd apps/electron && pnpm dist",
-    "electron:dist:win": "pnpm electron:build && cd apps/electron && pnpm dist:win",
+    "electron:dist:win": "pnpm electron:build && cd apps/electron && pnpm pack:dir",
     "electron:dist:mac": "pnpm electron:build && cd apps/electron && pnpm dist:mac",
     "tools:download": "node --import tsx scripts/download-bundled-tools.ts"
   },

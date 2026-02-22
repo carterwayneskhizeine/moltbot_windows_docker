@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc && electron .",
-    "pack": "electron-builder --dir",
+    "pack:dir": "npx electron-builder --win --dir",
     "dist": "electron-builder",
     "dist:win": "electron-builder --win --x64",
     "dist:mac": "electron-builder --mac --universal",

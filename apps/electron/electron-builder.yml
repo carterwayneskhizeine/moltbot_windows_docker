@@ -20,26 +20,23 @@ asar: true
 
 asarUnpack:
   - "dist/**/*"
-  - "node_modules/**/*"
+  # node_modules handled by extraResources, not asarUnpack
 
 extraResources:
   - from: "../../bundled-tools"
     to: "tools"
     filter:
       - "**/*"
-  # OpenClaw CLI code + dependencies - both in same directory for module resolution
+  # OpenClaw CLI code
   - from: "../../dist"
     to: "app"
     filter:
       - "**/*"
+  # CLI dependencies - will be auto-extracted by NSIS
   - from: "../../node_modules"
     to: "app/node_modules"
     filter:
       - "**/*"
-      - "!**/*.{ts,map}"
-      - "!**/node_modules/*/{CHANGELOG.md,README.md,readme.md,readme,LICENSE,LICENSE.md}"
-      - "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples,benchmark}"
-      - "!**/node_modules/.bin"
 
 win:
   target:
