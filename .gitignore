@@ -118,3 +118,8 @@ apps/openclaw-electron/bundled/node/nodevars.bat
 apps/openclaw-electron/bundled/node/node.exe
 apps/openclaw-electron/bundled/node/install_tools.bat
 apps/openclaw-electron/bundled/node/corepack.cmd
+
+apps/openclaw-electron/openclaw_temp
+
+apps/openclaw-electron/dist-installer
+apps/openclaw-electron/bundled/openclaw.tar.gz

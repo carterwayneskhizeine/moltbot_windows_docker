@@ -30,7 +30,7 @@ export class ResourceManager {
       return;
     }
 
-    const entryExists = fs.existsSync(path.join(openClawDestPath, 'dist', 'entry.js'));
+    const entryExists = fs.existsSync(path.join(openClawDestPath, 'openclaw.mjs'));
 
     // Check version.json in a mature system, but here we just check if entry.js is there
     if (entryExists) {
@@ -70,12 +70,12 @@ export class ResourceManager {
     const resourcesPath = this.getResourcesPath();
     if (process.platform === 'win32') {
         const cmdPath = path.join(resourcesPath, 'openclaw.cmd');
-        const script = `@ECHO OFF\r\nnode "%~dp0\\openclaw\\dist\\entry.js" %*`;
+        const script = `@ECHO OFF\r\nnode "%~dp0\\openclaw\\openclaw.mjs" %*`;
         fs.writeFileSync(cmdPath, script, 'utf8');
         console.log(`[ResourceManager] Created command link at ${cmdPath}`);
     } else {
         const binPath = path.join(resourcesPath, 'openclaw');
-        const script = `#!/bin/sh\nnode "$(dirname "$0")/openclaw/dist/entry.js" "$@"`;
+        const script = `#!/bin/sh\nnode "$(dirname "$0")/openclaw/openclaw.mjs" "$@"`;
         fs.writeFileSync(binPath, script, { encoding: 'utf8', mode: 0o755 });
         console.log(`[ResourceManager] Created command link at ${binPath}`);
     }

@@ -9,7 +9,7 @@ const TARGET_TAR = path.join(BUNDLED_DIR, 'openclaw.tar.gz');
 
 async function run() {
   if (!fs.existsSync(BUNDLED_DIR)) fs.mkdirSync(BUNDLED_DIR, { recursive: true });
-  if (fs.existsSync(TEMP_DIR)) fs.rmdirSync(TEMP_DIR, { recursive: true });
+  if (fs.existsSync(TEMP_DIR)) fs.rmSync(TEMP_DIR, { recursive: true });
   fs.mkdirSync(TEMP_DIR, { recursive: true });
 
   console.log('[Prepare OpenClaw] Packing local workspace root...');
@@ -45,8 +45,8 @@ async function run() {
   for (const item of toDelete) {
     const p = path.join(packageDir, item);
     const pUpper = path.join(packageDir, item.toUpperCase());
-    if (fs.existsSync(p)) fs.rmdirSync(p, { recursive: true });
-    if (fs.existsSync(pUpper)) fs.rmdirSync(pUpper, { recursive: true });
+    if (fs.existsSync(p)) fs.rmSync(p, { recursive: true });
+    if (fs.existsSync(pUpper)) fs.rmSync(pUpper, { recursive: true });
   }
 
   function removeMapFiles(dir) {
@@ -77,7 +77,7 @@ async function run() {
   );
 
   console.log('[Prepare OpenClaw] Cleaning up temporary files...');
-  fs.rmdirSync(TEMP_DIR, { recursive: true });
+  fs.rmSync(TEMP_DIR, { recursive: true });
 
   console.log(`[Prepare OpenClaw] Successfully prepared ${TARGET_TAR}`);
 }
