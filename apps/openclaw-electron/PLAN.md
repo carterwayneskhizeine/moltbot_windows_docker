@@ -45,11 +45,22 @@
 
 ### 3.5 OpenClaw 资源管理
 
-应用将 OpenClaw 预解压到 `bundled/openclaw/` 目录，包含：
+应用将 OpenClaw 打包为 `bundled/openclaw.tar.gz` 压缩文件，包含：
 
 - dist 目录中的构建产物
 - 入口文件（dist/entry.js）
 - node_modules 依赖目录（已清理非必要文件）
+
+首次启动时自动解压到 `%APPDATA%/OpenClaw/resources/openclaw/` 目录，并创建命令链接 `openclaw.cmd`，使 `openclaw` 命令全局可用（无需管理员权限）。
+
+解压目录结构：
+```
+%APPDATA%/OpenClaw/resources/
+├── openclaw/           # 解压后的 OpenClaw
+│   ├── dist/
+│   └── node_modules/
+└── openclaw.cmd        # 命令链接
+```
 
 ## 四、技术架构
 
@@ -86,12 +97,14 @@ extraResources:
   - from: bundled/node/
     to: bundled/node/
     filter: ["**/*"]
-  - from: bundled/openclaw/
-    to: bundled/openclaw/
-    filter: ["**/*"]
+  - from: bundled/openclaw.tar.gz
+    to: bundled/openclaw.tar.gz
 ```
 
-**优势**：无需运行时解压，启动更快，减少用户等待时间。
+**优势**：
+- 避免因 node_modules 文件数量过多导致打包失败
+- 压缩后体积更小，打包速度更快
+- 安装包体积更小，分发更方便
 
 ## 五、打包与发布
 
@@ -115,9 +128,8 @@ extraResources:
   - from: bundled/node/
     to: bundled/node/
     filter: ["**/*"]
-  - from: bundled/openclaw/
-    to: bundled/openclaw/
-    filter: ["**/*"]
+  - from: bundled/openclaw.tar.gz
+    to: bundled/openclaw.tar.gz
 
 win:
   target:
@@ -160,6 +172,8 @@ nsis:
 ```bash
 npm root -g          # 获取全局安装路径
 cp -R $GLOBAL/openclaw bundled/openclaw/
+tar -czf bundled/openclaw.tar.gz -C bundled openclaw
+rm -rf bundled/openclaw
 ```
 
 **策略 2：npm pack + extract + npm install（备用）**
@@ -168,11 +182,19 @@ npm pack openclaw --pack-destination .
 tar -xzf openclaw-*.tgz
 cd package
 npm install --production --ignore-scripts
+tar -czf ../bundled/openclaw.tar.gz -C ../package openclaw
+rm -rf ../package openclaw-*.tgz
 ```
 
 自动清理非必要文件：
 - 删除 test/tests/__tests__/.github/example/examples 目录
 - 删除 changelog.md/history.md/*.map 文件
+
+**生成压缩包**：
+```bash
+tar -czf bundled/openclaw.tar.gz -C bundled openclaw
+rm -rf bundled/openclaw
+```
 
 ## 六、构建与运行
 
@@ -216,7 +238,8 @@ apps/openclaw-electron/
 │   ├── main.ts            # 主进程入口
 │   ├── gateway-manager.ts # Gateway 管理
 │   ├── node-runtime.ts    # Node.js 路径管理
-│   └── preload.ts         # 预加载脚本
+│   ├── preload.ts         # 预加载脚本
+│   └── resource-manager.ts # 资源解压管理
 ├── assets/                 # 图标等资源
 ├── scripts/                # 构建脚本
 │   ├── prepare-node.js
@@ -224,7 +247,7 @@ apps/openclaw-electron/
 │   └── build-installer.js
 ├── bundled/                # 打包资源（运行时生成）
 │   ├── node/
-│   └── openclaw/
+│   └── openclaw.tar.gz   # OpenClaw 压缩包
 ├── dist/                   # 打包输出
 ├── package.json
 ├── vite.config.ts
@@ -273,13 +296,24 @@ apps/openclaw-electron/
 - IPC 桥接
 - 安全上下文隔离
 
-### 第七步：准备资源脚本
+### 第七步：实现资源管理器
+
+在 `electron/resource-manager.ts` 实现：
+
+- 检测压缩包是否存在
+- 首次启动时解压到 `%APPDATA%/OpenClaw/resources/openclaw/`
+- 创建命令链接 `openclaw.cmd`（Windows）或软链接（macOS/Linux）
+- 验证解压后的目录完整性
+- 返回解压后的资源路径
+- 应用卸载时清理资源目录
+
+### 第八步：准备资源脚本
 
 - `scripts/prepare-node.js` - 下载 Node.js
-- `scripts/prepare-openclaw.js` - 安装 OpenClaw
+- `scripts/prepare-openclaw.js` - 安装 OpenClaw 并打包为 tar.gz
 - `scripts/build-installer.js` - 统一构建流程
 
-### 第八步：测试与打包
+### 第九步：测试与打包
 
 - 开发模式测试功能
 - 运行 `npm run build:installer` 生成安装包
@@ -290,7 +324,9 @@ apps/openclaw-electron/
 - OpenClaw 控制界面地址：本地 18789 端口的控制页面
 - Gateway 默认端口：18789
 - Node.js 运行时：`bundled/node/node.exe`（生产）/ `bundled/node/node`（macOS/Linux）
-- OpenClaw 目录：`bundled/openclaw/`
+- OpenClaw 压缩包：`bundled/openclaw.tar.gz`
+- 解压后目录：`%APPDATA%/OpenClaw/resources/openclaw/`（Windows）或 `~/Library/Application Support/OpenClaw/resources/openclaw/`（macOS）
+- 命令链接：`%APPDATA%/OpenClaw/resources/openclaw.cmd`（Windows）
 - Gateway 健康检查：`http://127.0.0.1:18789/health`
 
 ## 九、参考项目
@@ -298,7 +334,7 @@ apps/openclaw-electron/
 本项目参考了 ClawWin2.0（https://github.com/wk42worldworld/ClawWin2.0）的优秀打包方案：
 
 - 独立 Node.js 运行时打包
-- 预解压资源策略
+- 压缩包资源策略（避免文件数量问题）
 - 智能安装脚本
 - Gateway 健康检查与自动重启
 - 统一构建流程
