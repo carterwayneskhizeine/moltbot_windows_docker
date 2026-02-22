@@ -1,0 +1,29 @@
+appId: com.openclaw.desktop
+productName: "OpenClaw"
+copyright: MIT License
+directories:
+  output: dist-installer
+  buildResources: build
+
+files:
+  - dist/**/*
+  - dist-electron/**/*
+
+extraResources:
+  - from: bundled/node/
+    to: bundled/node/
+    filter: ["**/*"]
+  - from: bundled/openclaw.tar.gz
+    to: bundled/openclaw.tar.gz
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  include: build/installer.nsh
