@@ -10,6 +10,10 @@ files:
   - dist-electron/**/*
 
 extraResources:
+  - from: assets/
+    to: assets/
+    filter:
+      - "**/*"
   - from: bundled/node/
     to: bundled/node/
     filter:

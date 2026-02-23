@@ -41,11 +41,7 @@ function createTray() {
     { type: 'separator' },
     {
       label: '退出',
-      click: async () => {
-        isQuitting = true
-        try { await gatewayManager?.stop() } catch { /* ignore */ }
-        tray?.destroy()
-        tray = null
+      click: () => {
         app.quit()
       },
     },
@@ -237,11 +233,24 @@ app.on('window-all-closed', () => {
   // 不退出 — 由托盘菜单"退出"驱动
 })
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  if (isQuitting) return
+  
+  event.preventDefault()
   isQuitting = true
-  gatewayManager?.stop().catch(() => {})
-  tray?.destroy()
-  tray = null
+
+  if (tray) {
+    tray.destroy()
+    tray = null
+  }
+
+  if (gatewayManager) {
+    gatewayManager.stop().finally(() => {
+      app.quit()
+    })
+  } else {
+    app.quit()
+  }
 })
 
 app.on('activate', () => {
