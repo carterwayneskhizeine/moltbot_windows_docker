@@ -107,3 +107,12 @@ dist/protocol.schema.json
 
 # Pinokio
 tmp
+
+# Eclipse
+**/.project
+**/.classpath
+**/.settings/
+**/.gradle/
+
+# Synthing
+**/.stfolder/
