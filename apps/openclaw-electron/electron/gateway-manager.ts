@@ -15,16 +15,30 @@ export interface GatewayManagerOptions {
   onLog: (level: 'info' | 'warn' | 'error', message: string) => void
 }
 
+/**
+ * Windows 上执行命令时隐藏控制台窗口的通用选项
+ */
+const HIDDEN_EXEC_OPTS = {
+  timeout: 8000,
+  windowsHide: true,
+  encoding: 'utf-8' as const,
+}
+
 export class GatewayManager {
   private process: ChildProcess | null = null
   private state: GatewayState = 'stopped'
   private healthCheckTimer: ReturnType<typeof setInterval> | null = null
+  private initialHealthCheckTimer: ReturnType<typeof setTimeout> | null = null
   private consecutiveFailures = 0
-  private readonly MAX_FAILURES = 5
+  // Gateway 启动比较慢（~15s），需要足够的重试次数
+  private readonly MAX_FAILURES = 12
   private readonly HEALTH_CHECK_INTERVAL = 5000
-  private readonly SHUTDOWN_TIMEOUT = 5000
+  private readonly SHUTDOWN_TIMEOUT = 8000
+  // 首次健康检查延迟：给 Gateway 充足的启动时间
+  private readonly INITIAL_HEALTH_CHECK_DELAY = 20000
   private stopping = false
   private externalGateway = false
+  private lastSpawnedPid: number | undefined = undefined
 
   constructor(private opts: GatewayManagerOptions) {}
 
@@ -56,7 +70,6 @@ export class GatewayManager {
     const portOccupied = await this.isTcpPortOccupied(this.opts.port)
     if (portOccupied) {
       this.log('warn', `端口 ${this.opts.port} 被第三方进程占用，尝试终止僵尸 Gateway 进程`)
-      // 只尝试 kill 明确是我们之前的 node 进程
       await this.killOurGatewayZombies(this.opts.port)
       await new Promise(resolve => setTimeout(resolve, 1500))
       const stillOccupied = await this.isTcpPortOccupied(this.opts.port)
@@ -91,6 +104,8 @@ export class GatewayManager {
     }
 
     if (!this.process) {
+      // 即使 this.process 为 null，也尝试通过 PID 或端口杀死残留进程
+      await this.killRemainingGatewayProcesses()
       this.setState('stopped')
       return
     }
@@ -100,50 +115,75 @@ export class GatewayManager {
     return new Promise<void>((resolve) => {
       const proc = this.process
       if (!proc) {
-        this.setState('stopped')
-        resolve()
+        this.killRemainingGatewayProcesses().finally(() => {
+          this.setState('stopped')
+          resolve()
+        })
         return
       }
 
       const pid = proc.pid
-
-      const forceKillTimer = setTimeout(() => {
-        this.log('warn', 'Gateway 未在超时内退出，强制终止进程树')
-        this.killProcessTree(pid)
-      }, this.SHUTDOWN_TIMEOUT)
-
-      proc.once('exit', () => {
+      let resolved = false
+      const done = () => {
+        if (resolved) return
+        resolved = true
         clearTimeout(forceKillTimer)
         this.process = null
         this.setState('stopped')
         this.log('info', 'Gateway 已关闭')
         resolve()
-      })
-
-      try {
-        // Windows: 用 taskkill /T 递归杀死整个进程树（包括子进程）
-        this.killProcessTree(pid)
-      } catch {
-        clearTimeout(forceKillTimer)
-        this.process = null
-        this.setState('stopped')
-        resolve()
       }
+
+      const forceKillTimer = setTimeout(() => {
+        this.log('warn', 'Gateway 未在超时内退出，强制终止进程树')
+        this.killProcessTree(pid)
+        // 兜底：通过端口查找残留进程
+        this.killRemainingGatewayProcesses().finally(done)
+      }, this.SHUTDOWN_TIMEOUT)
+
+      proc.once('exit', done)
+
+      // 先尝试通过 PID 杀进程树
+      this.killProcessTree(pid)
     })
   }
 
   /**
-   * 递归杀死整个进程树，Windows 上使用 taskkill /T /F
+   * 递归杀死整个进程树
+   * Windows 上使用 taskkill /T /F（windowsHide 隐藏控制台窗口）
    */
   private killProcessTree(pid: number | undefined) {
     if (!pid) return
     try {
       if (process.platform === 'win32') {
-        execSync(`taskkill /T /F /PID ${pid}`, { timeout: 5000 })
+        execSync(`taskkill /T /F /PID ${pid}`, {
+          ...HIDDEN_EXEC_OPTS,
+          stdio: 'ignore',
+        })
       } else {
-        process.kill(-pid, 'SIGKILL')
+        try {
+          process.kill(-pid, 'SIGTERM')
+        } catch {
+          try { process.kill(pid, 'SIGKILL') } catch { /* ignore */ }
+        }
       }
     } catch { /* 进程可能已退出 */ }
+  }
+
+  /**
+   * 通过端口查找并杀死所有占用该端口的 Gateway 进程（兜底方案）
+   */
+  private async killRemainingGatewayProcesses(): Promise<void> {
+    // 先尝试通过上次记录的 PID 杀
+    if (this.lastSpawnedPid) {
+      this.killProcessTree(this.lastSpawnedPid)
+      this.lastSpawnedPid = undefined
+    }
+
+    // 再通过端口查找残留
+    try {
+      await this.killOurGatewayZombies(this.opts.port)
+    } catch { /* ignore */ }
   }
 
   async restart(): Promise<void> {
@@ -171,7 +211,6 @@ export class GatewayManager {
       socket.setTimeout(2000)
       socket.once('connect', () => {
         socket.destroy()
-        // TCP 通了，再验证是否是 Gateway
         this.isRealGateway(port).then(resolve)
       })
       socket.once('timeout', () => { socket.destroy(); resolve(false) })
@@ -243,9 +282,6 @@ export class GatewayManager {
     this.log('info', `entry: ${entryScript}`)
     this.log('info', `cwd: ${this.opts.openclawPath}`)
 
-    // 注意：使用 'gateway start' 而非 'gateway'
-    // 因为 config-guard 中 'start' 在 ALLOWED_INVALID_GATEWAY_SUBCOMMANDS 白名单中，
-    // 允许在配置无效时继续启动（不会 exit(1)）
     this.process = spawn(
       this.opts.nodePath,
       [
@@ -258,11 +294,14 @@ export class GatewayManager {
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
         cwd: this.opts.openclawPath,
+        // 关键：隐藏控制台窗口，不弹出 PowerShell 窗口
         windowsHide: true,
-        // 不要设为 detached，保证进程是我们的子进程，方便 taskkill /T 递归杀死
         detached: false,
       },
     )
+
+    // 记录 PID，用于退出时兜底清理
+    this.lastSpawnedPid = this.process.pid
 
     this.process.stdout?.on('data', (data: Buffer) => {
       for (const line of data.toString().split('\n').filter(Boolean)) {
@@ -279,7 +318,8 @@ export class GatewayManager {
     this.process.on('exit', (code, signal) => {
       if (!this.stopping) {
         this.log('warn', `Gateway 进程退出 (code: ${code}, signal: ${signal})`)
-        this.setState('error')
+        // 不立即设为 error，等健康检查来判断
+        // 因为某些情况下进程可能是正常退出后立即重启
       }
       this.process = null
     })
@@ -310,8 +350,9 @@ export class GatewayManager {
     this.consecutiveFailures = 0
     this.stopHealthCheck()
 
-    const initialDelay = this.externalGateway ? 500 : 5000
-    setTimeout(() => {
+    const initialDelay = this.externalGateway ? 500 : this.INITIAL_HEALTH_CHECK_DELAY
+    this.initialHealthCheckTimer = setTimeout(() => {
+      this.initialHealthCheckTimer = null
       this.performHealthCheck()
       this.healthCheckTimer = setInterval(() => {
         this.performHealthCheck()
@@ -320,6 +361,10 @@ export class GatewayManager {
   }
 
   private stopHealthCheck() {
+    if (this.initialHealthCheckTimer) {
+      clearTimeout(this.initialHealthCheckTimer)
+      this.initialHealthCheckTimer = null
+    }
     if (this.healthCheckTimer) {
       clearInterval(this.healthCheckTimer)
       this.healthCheckTimer = null
@@ -349,7 +394,7 @@ export class GatewayManager {
   private onHealthCheckFailed(reason: string) {
     this.consecutiveFailures++
 
-    if (this.consecutiveFailures <= 2 || this.consecutiveFailures % 5 === 0) {
+    if (this.consecutiveFailures <= 3 || this.consecutiveFailures % 5 === 0) {
       this.log('warn', `健康检查失败 (${this.consecutiveFailures}/${this.MAX_FAILURES}): ${reason}`)
     }
 
@@ -373,7 +418,7 @@ export class GatewayManager {
       if (process.platform === 'win32') {
         const output = execSync(
           `netstat -ano | findstr "LISTENING" | findstr ":${port}"`,
-          { encoding: 'utf-8', timeout: 5000 },
+          { ...HIDDEN_EXEC_OPTS, stdio: ['pipe', 'pipe', 'pipe'] },
         )
         const pids = new Set<string>()
         for (const line of output.split('\n')) {
@@ -384,14 +429,15 @@ export class GatewayManager {
 
         for (const pid of pids) {
           try {
-            // 验证是否是我们的 node gateway 进程
             const cmdOutput = execSync(
               `wmic process where processId=${pid} get CommandLine /value`,
-              { encoding: 'utf-8', timeout: 3000 },
+              { ...HIDDEN_EXEC_OPTS, stdio: ['pipe', 'pipe', 'pipe'] },
             )
-            // 只 kill 包含 openclaw gateway 特征的进程
             if (cmdOutput.includes('openclaw') || cmdOutput.includes('entry.js')) {
-              execSync(`taskkill /PID ${pid} /F`, { timeout: 5000 })
+              execSync(`taskkill /T /F /PID ${pid}`, {
+                ...HIDDEN_EXEC_OPTS,
+                stdio: 'ignore',
+              })
               this.log('info', `已终止僵尸 Gateway 进程 (PID: ${pid})`)
             } else {
               this.log('warn', `跳过第三方进程 (PID: ${pid})`)
@@ -399,10 +445,10 @@ export class GatewayManager {
           } catch { /* 进程已退出或无权限 */ }
         }
       } else {
-        const output = execSync(`lsof -ti :${port}`, { encoding: 'utf-8', timeout: 5000 })
+        const output = execSync(`lsof -ti :${port}`, HIDDEN_EXEC_OPTS)
         for (const pid of output.trim().split('\n').filter(Boolean)) {
           try {
-            const cmdOutput = execSync(`ps -p ${pid} -o command=`, { encoding: 'utf-8', timeout: 3000 })
+            const cmdOutput = execSync(`ps -p ${pid} -o command=`, HIDDEN_EXEC_OPTS)
             if (cmdOutput.includes('openclaw') || cmdOutput.includes('entry')) {
               process.kill(Number(pid), 'SIGTERM')
               this.log('info', `已终止僵尸 Gateway 进程 (PID: ${pid})`)

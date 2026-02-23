@@ -71,7 +71,7 @@ function injectTitlebar(win: BrowserWindow | null) {
       const bar = document.createElement('div');
       bar.id = '__oc_titlebar';
       bar.style.cssText = [
-        'position:fixed','top:0','left:0','right:0','height:36px',
+        'position:fixed','top:0','left:0','width:100%','height:36px',
         'background:#141414','display:flex','align-items:center',
         'justify-content:space-between','padding:0 8px 0 14px',
         'z-index:2147483647','-webkit-app-region:drag',
@@ -114,9 +114,11 @@ function injectTitlebar(win: BrowserWindow | null) {
       bar.appendChild(controls);
       document.documentElement.appendChild(bar);
 
+      // body 加 padding-top，让页面主内容向下移动，不被 titlebar 遮挡
+      // 使用 body 而非 html，避免影响滚动条位置
       const style = document.createElement('style');
       style.id = '__oc_titlebar_style';
-      style.textContent = 'html { padding-top: 36px !important; box-sizing: border-box; }';
+      style.textContent = 'body { margin-top: 36px !important; }';
       document.head.appendChild(style);
     })()
   `
