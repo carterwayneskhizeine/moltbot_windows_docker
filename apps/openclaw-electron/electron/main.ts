@@ -54,6 +54,76 @@ function createTray() {
   })
 }
 
+// ─── Titlebar Injection ──────────────────────────────────────────────────────
+
+/**
+ * 向当前已加载的页面注入拖动条。
+ * loading 页（index.html）自带拖动条并设置了 window.__OPENCLAW_TITLEBAR__，会被跳过；
+ * 外部 Gateway Web UI 页面则注入一个固定在顶部的拖动条 + 窗口控制按钮。
+ */
+function injectTitlebar(win: BrowserWindow | null) {
+  if (!win) return
+
+  const js = `
+    (function() {
+      if (document.getElementById('__oc_titlebar') || window.__OPENCLAW_TITLEBAR__) return;
+
+      const bar = document.createElement('div');
+      bar.id = '__oc_titlebar';
+      bar.style.cssText = [
+        'position:fixed','top:0','left:0','right:0','height:36px',
+        'background:#141414','display:flex','align-items:center',
+        'justify-content:space-between','padding:0 8px 0 14px',
+        'z-index:2147483647','-webkit-app-region:drag',
+        'border-bottom:1px solid rgba(255,255,255,0.07)',
+        'font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif',
+        'user-select:none','box-sizing:border-box',
+      ].join(';');
+
+      const title = document.createElement('span');
+      title.textContent = 'OpenClaw';
+      title.style.cssText = 'font-size:12px;font-weight:500;color:rgba(255,255,255,0.45);letter-spacing:.3px';
+
+      const controls = document.createElement('div');
+      controls.style.cssText = 'display:flex;align-items:center;gap:2px;-webkit-app-region:no-drag';
+
+      const btnBase = 'width:32px;height:28px;border:none;background:transparent;' +
+        'color:rgba(255,255,255,0.5);display:flex;align-items:center;justify-content:center;' +
+        'cursor:pointer;border-radius:4px;transition:background .15s,color .15s;padding:0';
+
+      function makeBtn(svg, hoverBg, cb) {
+        const b = document.createElement('button');
+        b.innerHTML = svg;
+        b.style.cssText = btnBase;
+        b.onmouseenter = () => { b.style.background = hoverBg; b.style.color = '#fff'; };
+        b.onmouseleave = () => { b.style.background = 'transparent'; b.style.color = 'rgba(255,255,255,0.5)'; };
+        b.onclick = cb;
+        return b;
+      }
+
+      const api = window.electronAPI;
+      const SVG_MIN = '<svg width="10" height="1" viewBox="0 0 10 1" fill="currentColor"><rect width="10" height="1"/></svg>';
+      const SVG_MAX = '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><rect x=".5" y=".5" width="9" height="9"/></svg>';
+      const SVG_CLOSE = '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M1 1l8 8M9 1L1 9"/></svg>';
+
+      controls.appendChild(makeBtn(SVG_MIN,  'rgba(255,255,255,0.1)', () => api && api.window && api.window.minimize()));
+      controls.appendChild(makeBtn(SVG_MAX,  'rgba(255,255,255,0.1)', () => api && api.window && api.window.toggleMaximize()));
+      controls.appendChild(makeBtn(SVG_CLOSE,'#e81123',               () => api && api.window && api.window.hideToTray()));
+
+      bar.appendChild(title);
+      bar.appendChild(controls);
+      document.documentElement.appendChild(bar);
+
+      const style = document.createElement('style');
+      style.id = '__oc_titlebar_style';
+      style.textContent = 'html { padding-top: 36px !important; box-sizing: border-box; }';
+      document.head.appendChild(style);
+    })()
+  `
+
+  win.webContents.executeJavaScript(js).catch(() => {})
+}
+
 // ─── Window ───────────────────────────────────────────────────────────────────
 
 function createWindow() {
@@ -66,12 +136,8 @@ function createWindow() {
     minHeight: 600,
     title: 'OpenClaw',
     icon: getIconPath(),
-    titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: '#1a1a1a',
-      symbolColor: '#ffffff',
-      height: 36,
-    },
+    // 完全自定义标题栏，系统原生按钮就删掉
+    frame: false,
     webPreferences: {
       preload: PRELOAD,
       contextIsolation: true,
@@ -91,6 +157,11 @@ function createWindow() {
     ) {
       mainWindow?.webContents.toggleDevTools()
     }
+  })
+
+  // 每次页面加载完成后注入拖动条（包括 Gateway Web UI 页）
+  mainWindow.webContents.on('did-finish-load', () => {
+    injectTitlebar(mainWindow)
   })
 
   // 超时 fallback 显示
@@ -157,6 +228,14 @@ function setupIPC() {
       shell.openExternal(url)
     }
   })
+
+  // 窗口控制
+  ipcMain.on('window:minimize', () => mainWindow?.minimize())
+  ipcMain.on('window:toggleMaximize', () => {
+    if (mainWindow?.isMaximized()) mainWindow.unmaximize()
+    else mainWindow?.maximize()
+  })
+  ipcMain.on('window:hideToTray', () => mainWindow?.hide())
 }
 
 // ─── Gateway ──────────────────────────────────────────────────────────────────

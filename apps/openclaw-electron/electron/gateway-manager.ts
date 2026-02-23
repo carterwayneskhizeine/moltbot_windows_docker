@@ -105,9 +105,11 @@ export class GatewayManager {
         return
       }
 
+      const pid = proc.pid
+
       const forceKillTimer = setTimeout(() => {
-        this.log('warn', 'Gateway 未在超时内退出，强制终止')
-        try { proc.kill('SIGKILL') } catch { /* ignore */ }
+        this.log('warn', 'Gateway 未在超时内退出，强制终止进程树')
+        this.killProcessTree(pid)
       }, this.SHUTDOWN_TIMEOUT)
 
       proc.once('exit', () => {
@@ -119,7 +121,8 @@ export class GatewayManager {
       })
 
       try {
-        proc.kill()
+        // Windows: 用 taskkill /T 递归杀死整个进程树（包括子进程）
+        this.killProcessTree(pid)
       } catch {
         clearTimeout(forceKillTimer)
         this.process = null
@@ -127,6 +130,20 @@ export class GatewayManager {
         resolve()
       }
     })
+  }
+
+  /**
+   * 递归杀死整个进程树，Windows 上使用 taskkill /T /F
+   */
+  private killProcessTree(pid: number | undefined) {
+    if (!pid) return
+    try {
+      if (process.platform === 'win32') {
+        execSync(`taskkill /T /F /PID ${pid}`, { timeout: 5000 })
+      } else {
+        process.kill(-pid, 'SIGKILL')
+      }
+    } catch { /* 进程可能已退出 */ }
   }
 
   async restart(): Promise<void> {
@@ -242,6 +259,8 @@ export class GatewayManager {
         stdio: ['ignore', 'pipe', 'pipe'],
         cwd: this.opts.openclawPath,
         windowsHide: true,
+        // 不要设为 detached，保证进程是我们的子进程，方便 taskkill /T 递归杀死
+        detached: false,
       },
     )
 

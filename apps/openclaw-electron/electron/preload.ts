@@ -45,6 +45,11 @@ const electronAPI = {
     openExternal: (url: string): Promise<void> =>
       ipcRenderer.invoke('shell:openExternal', url),
   },
+  window: {
+    minimize: (): void => ipcRenderer.send('window:minimize'),
+    toggleMaximize: (): void => ipcRenderer.send('window:toggleMaximize'),
+    hideToTray: (): void => ipcRenderer.send('window:hideToTray'),
+  },
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)
