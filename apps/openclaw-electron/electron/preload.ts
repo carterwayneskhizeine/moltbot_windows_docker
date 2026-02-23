@@ -50,6 +50,22 @@ const electronAPI = {
     toggleMaximize: (): void => ipcRenderer.send('window:toggleMaximize'),
     hideToTray: (): void => ipcRenderer.send('window:hideToTray'),
   },
+  pty: {
+    create: (options?: { cwd?: string; id?: string }) => ipcRenderer.invoke('pty:create', options),
+    write: (id: string, data: string) => ipcRenderer.send('pty:write', id, data),
+    resize: (id: string, cols: number, rows: number) => ipcRenderer.send('pty:resize', id, cols, rows),
+    destroy: (id: string) => ipcRenderer.send('pty:destroy', id),
+    onData: (callback: (id: string, data: string) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, id: string, data: string) => callback(id, data)
+      ipcRenderer.on('pty:data', handler)
+      return () => ipcRenderer.removeListener('pty:data', handler)
+    },
+    onExit: (callback: (id: string, info: { exitCode: number, signal?: number }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, id: string, info: any) => callback(id, info)
+      ipcRenderer.on('pty:exit', handler)
+      return () => ipcRenderer.removeListener('pty:exit', handler)
+    }
+  }
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

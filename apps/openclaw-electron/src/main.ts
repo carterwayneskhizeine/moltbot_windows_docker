@@ -1,57 +1,78 @@
-// Renderer entry point: polls gateway status and redirects to Control UI when ready
+// Renderer entry point
+
+import { TabManager } from './tab-manager'
+
 export type GatewayState = 'starting' | 'ready' | 'error' | 'stopped' | 'restarting'
 
 const statusEl = document.getElementById('status')!
+const loadingBox = document.getElementById('gateway-loading')!
+let tabManager: TabManager | null = null
 
 function setStatus(text: string) {
-  statusEl.textContent = text
+  if (statusEl) statusEl.textContent = text
+}
+
+function initGatewayTab(iframe: HTMLIFrameElement, port: number) {
+  const url = `http://127.0.0.1:${port}`
+  iframe.src = url
+  // Wait to hide loading state until iframe starts loading to avoid flash of background
+  iframe.onload = () => {
+    loadingBox.style.display = 'none'
+    iframe.style.display = 'block'
+  }
 }
 
 async function waitForGateway() {
-  const electronAPI = (window as unknown as { electronAPI: {
-    gateway: {
-      getStatus: () => Promise<{ state: GatewayState; port: number }>
-      onStateChanged: (cb: (state: GatewayState) => void) => () => void
-    }
-  } }).electronAPI
+  const electronAPI = (window as unknown as { electronAPI: any }).electronAPI
 
-  if (!electronAPI) {
-    // Dev mode without preload - just redirect
-    setStatus('正在连接...')
+  if (!electronAPI || !electronAPI.gateway) {
+    // Dev mode without preload / electron context
+    setStatus('不在 Electron 环境，直接启动标签页')
     setTimeout(() => {
-      window.location.href = 'http://127.0.0.1:18789'
-    }, 2000)
+      tabManager = new TabManager((iframe) => {
+        initGatewayTab(iframe, 18789)
+      })
+    }, 1000)
     return
   }
 
-  // Listen for state changes
-  const unsubscribe = electronAPI.gateway.onStateChanged((state) => {
-    if (state === 'ready') {
-      unsubscribe()
-      setStatus('Gateway 已就绪，正在跳转...')
-      setTimeout(() => {
-        window.location.href = 'http://127.0.0.1:18789'
-      }, 500)
-    } else if (state === 'error') {
-      setStatus('Gateway 启动失败，请检查日志')
-    } else if (state === 'starting') {
-      setStatus('正在启动 Gateway...')
-    } else if (state === 'restarting') {
-      setStatus('正在重启 Gateway...')
+  // 初始化 Tab 系统
+  tabManager = new TabManager((iframe) => {
+    // iframe 生命周期交由本函数管理
+    const handleReady = (port: number) => {
+      setStatus('Gateway 已就绪，加载中...')
+      initGatewayTab(iframe, port)
     }
-  })
 
-  // Check current status immediately
-  const status = await electronAPI.gateway.getStatus()
-  if (status.state === 'ready') {
-    unsubscribe()
-    setStatus('Gateway 已就绪，正在跳转...')
-    setTimeout(() => {
-      window.location.href = `http://127.0.0.1:${status.port}`
-    }, 300)
-  } else if (status.state === 'error') {
-    setStatus('Gateway 启动失败，请检查日志')
-  }
+    // 监听状态变化
+    const unsubscribe = electronAPI.gateway.onStateChanged((state: GatewayState) => {
+        if (state === 'error') {
+          setStatus('Gateway 启动失败，请检查日志')
+          loadingBox.style.display = 'flex'
+          iframe.style.display = 'none'
+        } else if (state === 'starting') {
+          setStatus('正在启动 Gateway...')
+          loadingBox.style.display = 'flex'
+          iframe.style.display = 'none'
+        } else if (state === 'restarting') {
+          setStatus('正在重启 Gateway...')
+          loadingBox.style.display = 'flex'
+          iframe.style.display = 'none'
+        } else if (state === 'ready') {
+          electronAPI.gateway.getPort().then(handleReady)
+        }
+    })
+
+    // 启动时立即检查状态
+    electronAPI.gateway.getStatus().then((status: any) => {
+      if (status.state === 'ready') {
+        handleReady(status.port)
+      } else if (status.state === 'error') {
+        setStatus('Gateway 启动失败，请检查日志')
+      }
+    })
+  })
 }
 
+// Kickoff
 waitForGateway()

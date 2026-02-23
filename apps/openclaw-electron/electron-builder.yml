@@ -5,9 +5,13 @@ directories:
   output: release
   buildResources: assets
 
+buildDependenciesFromSource: false
+npmRebuild: false
+
 files:
   - dist/**/*
   - dist-electron/**/*
+  - node_modules/node-pty/**/*
 
 extraResources:
   - from: assets/

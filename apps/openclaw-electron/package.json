@@ -15,9 +15,17 @@
     "build:installer": "node scripts/build-installer.js",
     "build:installer-unpacked": "cross-env UNPACKED_ONLY=1 node scripts/build-installer.js",
     "electron:dev": "npm run build:electron && electron .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "rebuild": "electron-rebuild -f -w @homebridge/node-pty-prebuilt-multiarch",
+    "postinstall": "electron-rebuild"
+  },
+  "dependencies": {
+    "@homebridge/node-pty-prebuilt-multiarch": "^0.13.1",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.3",
     "@types/node": "^22.10.0",
     "@vitejs/plugin-react": "^4.3.4",
     "cross-env": "^7.0.3",

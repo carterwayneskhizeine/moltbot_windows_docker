@@ -4,6 +4,7 @@ import http from 'node:http'
 import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
+import { buildSafeEnvironment } from './env-utils'
 
 export type GatewayState = 'starting' | 'ready' | 'error' | 'stopped' | 'restarting'
 
@@ -265,7 +266,7 @@ export class GatewayManager {
     const entryScript = this.findEntryScript()
     const token = this.readGatewayToken()
 
-    const env: Record<string, string> = {
+    const env: Record<string, string> = buildSafeEnvironment({
       ...(process.env as Record<string, string>),
       NODE_ENV: 'production',
       OPENCLAW_NO_RESPAWN: '1',
@@ -274,7 +275,7 @@ export class GatewayManager {
       OPENCLAW_HOME: os.homedir(),
       // 跳过频道加载，避免因缺少频道插件导致配置校验失败
       OPENCLAW_SKIP_CHANNELS: '1',
-    }
+    })
 
     if (token) env.OPENCLAW_GATEWAY_TOKEN = token
 

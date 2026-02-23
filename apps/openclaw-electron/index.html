@@ -25,22 +25,28 @@
 
     /* ── 拖动标题栏 ── */
     #titlebar {
-      height: 36px;
+      height: 44px;
       background: #141414;
       display: flex;
       align-items: center;
       justify-content: space-between;
       padding: 0 12px 0 16px;
       flex-shrink: 0;
-      /* 这是让整个标题栏可以拖动窗口的关键属性 */
       -webkit-app-region: drag;
       border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     }
 
+    /* 左侧 title 区域 */
+    #titlebar-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
     #titlebar-title {
-      font-size: 12px;
-      font-weight: 500;
-      color: rgba(255, 255, 255, 0.5);
+      font-size: 13px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.8);
       letter-spacing: 0.3px;
       display: flex;
       align-items: center;
@@ -48,10 +54,46 @@
     }
 
     #titlebar-title svg {
-      opacity: 0.6;
+      opacity: 0.8;
+      color: #7c3aed;
+      /* 品牌色点缀 */
     }
 
-    /* 窗口控制按钮区域不能被拖动 */
+    /* Tab 签切换 */
+    #titlebar-tabs {
+      display: flex;
+      align-items: center;
+      -webkit-app-region: no-drag;
+      /* 按钮区域不可拖动 */
+      height: 100%;
+    }
+
+    .tab-btn {
+      height: 100%;
+      background: transparent;
+      border: none;
+      color: #fff;
+      padding: 0 16px;
+      font-size: 13px;
+      cursor: pointer;
+      opacity: 0.5;
+      transition: opacity 0.2s, background 0.1s;
+      display: flex;
+      align-items: center;
+      border-bottom: 2px solid transparent;
+    }
+
+    .tab-btn:hover {
+      background: rgba(255, 255, 255, 0.05);
+      opacity: 0.8;
+    }
+
+    .tab-btn.active {
+      opacity: 1;
+      border-bottom: 2px solid #7c3aed;
+    }
+
+    /* 右侧控制按钮 */
     #titlebar-controls {
       display: flex;
       align-items: center;
@@ -60,7 +102,7 @@
     }
 
     .ctrl-btn {
-      width: 32px;
+      width: 38px;
       height: 28px;
       border: none;
       background: transparent;
@@ -83,14 +125,32 @@
       color: #fff;
     }
 
-    /* ── 主体内容 ── */
+    /* ── 主体内容容器 ── */
     #content {
       flex: 1;
+      position: relative;
+      background: #1a1a1a;
+      overflow: hidden;
+    }
+
+    .tab-content {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: none;
+    }
+
+    /* 启动 Loading */
+    .loading-center {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       gap: 16px;
+      height: 100%;
+      width: 100%;
     }
 
     .spinner {
@@ -112,23 +172,39 @@
       font-size: 13px;
       color: rgba(255, 255, 255, 0.4);
     }
+
+    /* iframe content */
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: #1a1a1a;
+    }
   </style>
 </head>
 
 <body>
   <!-- 拖动标题栏 -->
   <div id="titlebar">
-    <div id="titlebar-title">
-      <!-- 爪子小图标 -->
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-        <circle cx="4" cy="3" r="1.5" />
-        <circle cx="8" cy="2" r="1.5" />
-        <circle cx="12" cy="3" r="1.5" />
-        <path
-          d="M3 6c-.8 1.5-.5 4 1 5.5S7 14 8 14s3.5-.5 5-2.5 1.8-4 1-5.5c-.5-1-1.5-1-2 0l-.5 1c-.3.6-.8 1-1.5 1S8.8 7.1 8.5 6.5L8 5.5c-.3-.7-.8-1-1.5-.5C5.8 5.5 4.5 5.5 4 5.5c-.5 0-.8.2-1 .5z" />
-      </svg>
-      OpenClaw
+    <div id="titlebar-left">
+      <div id="titlebar-title">
+        <!-- 爪子小图标 -->
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+          <circle cx="4" cy="3" r="1.5" />
+          <circle cx="8" cy="2" r="1.5" />
+          <circle cx="12" cy="3" r="1.5" />
+          <path
+            d="M3 6c-.8 1.5-.5 4 1 5.5S7 14 8 14s3.5-.5 5-2.5 1.8-4 1-5.5c-.5-1-1.5-1-2 0l-.5 1c-.3.6-.8 1-1.5 1S8.8 7.1 8.5 6.5L8 5.5c-.3-.7-.8-1-1.5-.5C5.8 5.5 4.5 5.5 4 5.5c-.5 0-.8.2-1 .5z" />
+        </svg>
+        OpenClaw
+      </div>
+      <div id="titlebar-tabs">
+        <button class="tab-btn active" id="tab-btn-gateway">控制台</button>
+        <button class="tab-btn" id="tab-btn-terminal">终端</button>
+        <button class="tab-btn" id="tab-btn-browser">浏览器</button>
+      </div>
     </div>
+
     <div id="titlebar-controls">
       <!-- 最小化 -->
       <button class="ctrl-btn" id="btn-minimize" title="最小化">
@@ -151,16 +227,40 @@
     </div>
   </div>
 
-  <!-- 内容 -->
+  <!-- 内容区 -->
   <div id="content">
-    <div class="spinner"></div>
-    <div class="text" id="status">正在启动 Gateway...</div>
+
+    <!-- Tab 1: Gateway Control UI -->
+    <div id="tab-gateway" class="tab-content" style="display: block;">
+      <div id="gateway-loading" class="loading-center">
+        <div class="spinner"></div>
+        <div class="text" id="status">正在启动 Gateway...</div>
+      </div>
+      <!-- initial empty src, set by main.ts once ready -->
+      <iframe id="gateway-iframe" src="about:blank" style="display: none;"></iframe>
+    </div>
+
+    <!-- Tab 2: Terminal -->
+    <div id="tab-terminal" class="tab-content">
+      <div class="loading-center">
+        <div class="text">终端初始化...</div>
+      </div>
+    </div>
+
+    <!-- Tab 3: Browser -->
+    <div id="tab-browser" class="tab-content">
+      <div class="loading-center">
+        <div class="spinner"></div>
+        <div class="text">正在加载内置浏览器引擎...</div>
+      </div>
+    </div>
+
   </div>
 
   <script>window.__OPENCLAW_TITLEBAR__ = true</script>
   <script type="module" src="/src/main.ts"></script>
   <script>
-    // 窗口控制按钮（不依赖模块加载）
+    // 窗口控制按钮
     const api = window.electronAPI
     document.getElementById('btn-minimize')?.addEventListener('click', () => api?.window?.minimize())
     document.getElementById('btn-maximize')?.addEventListener('click', () => api?.window?.toggleMaximize())
