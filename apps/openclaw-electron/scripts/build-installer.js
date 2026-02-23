@@ -5,13 +5,20 @@
  *   1. prepare-node.js     — 下载 Node.js 运行时
  *   2. prepare-openclaw.js — 从本地仓库构建并复制 OpenClaw
  *   3. vite build          — 编译 Electron 主进程
- *   4. electron-builder    — 打包成 NSIS 安装包
+ *   4. electron-builder    — 打包成 NSIS 安装包（或只生成 unpacked 目录）
+ *
+ * 用法:
+ *   npm run build:installer          # 完整打包（生成 .exe 安装程序）
+ *   npm run build:installer-unpacked # 只生成 win-unpacked（不打包 exe，速度更快）
  */
 const { execSync } = require('child_process')
 const path = require('path')
 const fs = require('fs')
 
 const ROOT = path.join(__dirname, '..')
+
+// --unpacked 参数或 UNPACKED_ONLY=1 环境变量：只生成 win-unpacked，不打包 exe
+const UNPACKED_ONLY = process.argv.includes('--unpacked') || process.env.UNPACKED_ONLY === '1'
 
 function run(cmd, label) {
   console.log(`\n${'='.repeat(60)}`)
@@ -65,24 +72,53 @@ async function main() {
   run('node scripts/prepare-node.js', '步骤 1/4: 下载 Node.js 运行时')
   run('node scripts/prepare-openclaw.js', '步骤 2/4: 准备 OpenClaw（本地源码）')
   run('npx vite build', '步骤 3/4: 编译前端 + Electron 主进程')
-  run('npx electron-builder --win --config electron-builder.yml', '步骤 4/4: 打包 NSIS 安装包')
 
-  console.log(`
+  if (UNPACKED_ONLY) {
+    run(
+      'npx electron-builder --win --dir --config electron-builder.yml',
+      '步骤 4/4: 生成 win-unpacked 目录（快速测试模式，跳过 NSIS 打包）',
+    )
+  } else {
+    run(
+      'npx electron-builder --win --config electron-builder.yml',
+      '步骤 4/4: 打包 NSIS 安装包',
+    )
+  }
+
+  if (UNPACKED_ONLY) {
+    const unpackedDir = path.join(ROOT, 'release', 'win-unpacked')
+    console.log(`
+  ╔══════════════════════════════════════════════════╗
+  ║           ✅ 构建完成（快速测试模式）             ║
+  ╠══════════════════════════════════════════════════╣
+  ║  Unpacked 目录: release/win-unpacked/            ║
+  ║  运行: release\\win-unpacked\\OpenClaw.exe       ║
+  ╚══════════════════════════════════════════════════╝
+    `)
+    if (fs.existsSync(unpackedDir)) {
+      const exe = path.join(unpackedDir, 'OpenClaw.exe')
+      if (fs.existsSync(exe)) {
+        const stats = fs.statSync(exe)
+        console.log(`  OpenClaw.exe: ${(stats.size / 1024 / 1024).toFixed(1)} MB`)
+      }
+    }
+  } else {
+    console.log(`
   ╔══════════════════════════════════════════╗
   ║           ✅ 构建完成！                   ║
   ╠══════════════════════════════════════════╣
   ║  安装包位于: release/ 目录               ║
   ╚══════════════════════════════════════════╝
-  `)
-
-  const releaseDir = path.join(ROOT, 'release')
-  if (fs.existsSync(releaseDir)) {
-    const files = fs.readdirSync(releaseDir).filter((f) => f.endsWith('.exe'))
-    if (files.length > 0) {
-      console.log('生成的安装包:')
-      for (const file of files) {
-        const stats = fs.statSync(path.join(releaseDir, file))
-        console.log(`  ${file} (${(stats.size / 1024 / 1024).toFixed(1)} MB)`)
+    `)
+    const releaseDir = path.join(ROOT, 'release')
+    if (fs.existsSync(releaseDir)) {
+      const files = fs.readdirSync(releaseDir).filter((f) => f.endsWith('.exe'))
+      if (files.length > 0) {
+        console.log('生成的安装包:')
+        for (const file of files) {
+          const stats = fs.statSync(path.join(releaseDir, file))
+          console.log(`  ${file} (${(stats.size / 1024 / 1024).toFixed(1)} MB)`)
+        }
       }
     }
   }
