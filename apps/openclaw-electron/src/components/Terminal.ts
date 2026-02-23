@@ -28,7 +28,7 @@ export class Terminal {
     this.term.loadAddon(this.fitAddon)
   }
 
-  public async mount() {
+  public async mount(providedId?: string) {
     this.term.open(this.container)
     
     // 等待一小段时间确保 DOM 元素具备尺寸后再 fit
@@ -43,7 +43,11 @@ export class Terminal {
     }
 
     try {
-      this.id = await electronAPI.pty.create()
+      if (providedId) {
+        this.id = providedId
+      } else {
+        this.id = await electronAPI.pty.create()
+      }
       
       this.term.onData((data) => {
         if (this.id) {
@@ -67,7 +71,9 @@ export class Terminal {
       const unsubExit = electronAPI.pty.onExit((ptyId: string, info: any) => {
         if (ptyId === this.id) {
           this.term.write(`\r\n\x1b[33mProcess exited with code ${info.exitCode}\x1b[0m\r\n`)
-          this.id = null
+          if (!providedId) {
+            this.id = null
+          }
         }
       })
       this.unsubs.push(unsubExit)

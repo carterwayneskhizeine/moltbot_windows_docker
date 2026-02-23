@@ -8,12 +8,15 @@ import { buildSafeEnvironment } from './env-utils'
 
 export type GatewayState = 'starting' | 'ready' | 'error' | 'stopped' | 'restarting'
 
+import type { PtyManager } from './pty-manager'
+
 export interface GatewayManagerOptions {
   nodePath: string
   openclawPath: string
   port: number
   onStateChange: (state: GatewayState) => void
   onLog: (level: 'info' | 'warn' | 'error', message: string) => void
+  getPtyManager: () => PtyManager | null
 }
 
 /**
@@ -26,7 +29,7 @@ const HIDDEN_EXEC_OPTS = {
 }
 
 export class GatewayManager {
-  private process: ChildProcess | null = null
+  private process: any | null = null
   private state: GatewayState = 'stopped'
   private healthCheckTimer: ReturnType<typeof setInterval> | null = null
   private initialHealthCheckTimer: ReturnType<typeof setTimeout> | null = null
@@ -142,7 +145,11 @@ export class GatewayManager {
         this.killRemainingGatewayProcesses().finally(done)
       }, this.SHUTDOWN_TIMEOUT)
 
-      proc.once('exit', done)
+      if (proc.onExit) {
+        proc.onExit(done)
+      } else {
+        proc.once('exit', done)
+      }
 
       // 先尝试通过 PID 杀进程树
       this.killProcessTree(pid)
@@ -283,7 +290,13 @@ export class GatewayManager {
     this.log('info', `entry: ${entryScript}`)
     this.log('info', `cwd: ${this.opts.openclawPath}`)
 
-    this.process = spawn(
+    const ptyManager = this.opts.getPtyManager()
+    if (!ptyManager) {
+      throw new Error('PtyManager is not ready')
+    }
+
+    this.process = ptyManager.spawnCommand(
+      'gateway', 
       this.opts.nodePath,
       [
         '--disable-warning=ExperimentalWarning',
@@ -291,43 +304,29 @@ export class GatewayManager {
         'gateway', 'start',
         '--port', String(this.opts.port),
       ],
-      {
-        env,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        cwd: this.opts.openclawPath,
-        // 关键：隐藏控制台窗口，不弹出 PowerShell 窗口
-        windowsHide: true,
-        detached: false,
-      },
+      this.opts.openclawPath,
+      env
     )
+
+    if (!this.process) {
+      throw new Error('Failed to spawn Gateway PTY process.')
+    }
 
     // 记录 PID，用于退出时兜底清理
     this.lastSpawnedPid = this.process.pid
 
-    this.process.stdout?.on('data', (data: Buffer) => {
-      for (const line of data.toString().split('\n').filter(Boolean)) {
-        this.log('info', line)
+    this.process.onData((data: string) => {
+      // 这里的 data 已经整合混淆了 stdout 和 stderr
+      for (const line of data.split('\n').filter(Boolean)) {
+        // Strip out any purely empty lines or cursor control characters if needed
+        // this.log('info', line.trim())
       }
     })
 
-    this.process.stderr?.on('data', (data: Buffer) => {
-      for (const line of data.toString().split('\n').filter(Boolean)) {
-        this.log('warn', line)
-      }
-    })
-
-    this.process.on('exit', (code, signal) => {
+    this.process.onExit(({ exitCode, signal }: { exitCode: number, signal?: number }) => {
       if (!this.stopping) {
-        this.log('warn', `Gateway 进程退出 (code: ${code}, signal: ${signal})`)
-        // 不立即设为 error，等健康检查来判断
-        // 因为某些情况下进程可能是正常退出后立即重启
+        this.log('warn', `Gateway 进程退出 (code: ${exitCode}, signal: ${signal})`)
       }
-      this.process = null
-    })
-
-    this.process.on('error', (err) => {
-      this.log('error', `Gateway 进程错误: ${err.message}`)
-      this.setState('error')
       this.process = null
     })
   }

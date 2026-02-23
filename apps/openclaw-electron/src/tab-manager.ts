@@ -7,8 +7,9 @@ const TAB_IDS: TabType[] = ['gateway', 'terminal', 'browser']
 export class TabManager {
   private currentTab: TabType = 'gateway'
   
+  private gatewayTerminalInstance: Terminal | null = null
   private terminalInstance: Terminal | null = null
-  private browserInstance: Browser | null = null
+  private browserInstance: Terminal | Browser | null = null
 
   // DOM elements
   private btnGateway = document.getElementById('tab-btn-gateway')!
@@ -19,12 +20,11 @@ export class TabManager {
   private contentTerminal = document.getElementById('tab-terminal')!
   private contentBrowser = document.getElementById('tab-browser')!
 
-  constructor(private onGatewayInit: (iframe: HTMLIFrameElement) => void) {
+  constructor() {
     this.setupEvents()
     
-    // 初始化 Gateway iframe 及其事件
-    const iframe = this.contentGateway.querySelector('iframe')!
-    this.onGatewayInit(iframe)
+    // 初始化时确保当前 Tab 内容可用
+    this.ensureInitialized(this.currentTab)
   }
 
   private setupEvents() {
@@ -57,6 +57,15 @@ export class TabManager {
   }
 
   private ensureInitialized(tab: TabType) {
+    if (tab === 'gateway' && !this.gatewayTerminalInstance) {
+      this.contentGateway.innerHTML = '<div id="gateway-terminal" class="terminal-container"></div>'
+      const wrapper = document.getElementById('gateway-terminal')!
+      this.gatewayTerminalInstance = new Terminal(wrapper)
+      this.gatewayTerminalInstance.mount('gateway') // 特别指定连接到 id 为 'gateway' 的本地 PTY 后台
+    } else if (tab === 'gateway' && this.gatewayTerminalInstance) {
+      this.gatewayTerminalInstance.resize()
+    }
+
     if (tab === 'terminal' && !this.terminalInstance) {
       // 这里清空内容容器（原本的加载提示），换成 terminal
       this.contentTerminal.innerHTML = '<div id="terminal-wrapper" class="terminal-container"></div>'
@@ -72,7 +81,7 @@ export class TabManager {
       this.contentBrowser.innerHTML = '<div id="browser-wrapper" style="width:100%;height:100%;"></div>'
       const wrapper = document.getElementById('browser-wrapper')!
       this.browserInstance = new Browser(wrapper)
-      this.browserInstance.mount()
+      ;(this.browserInstance as Browser).mount()
     }
   }
 }

@@ -196,6 +196,7 @@ function initGatewayManager() {
       console.log(`[gateway:${level}]`, message)
       mainWindow?.webContents.send('gateway:log', { level, message })
     },
+    getPtyManager: () => ptyManager,
   })
 }
 
@@ -223,14 +224,14 @@ if (!gotTheLock) {
 }
 
 app.whenReady().then(() => {
+  createWindow()
+  createTray()
+
   setupIPC()
   initGatewayManager()
 
   // 自动启动 Gateway
   gatewayManager?.start()
-
-  createWindow()
-  createTray()
 })
 
 app.on('window-all-closed', () => {

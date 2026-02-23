@@ -47,6 +47,13 @@ export class PtyManager {
   }
 
   private createPty(id: string, customCwd?: string) {
+    const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash'
+    const cwd = customCwd || process.cwd()
+    const safeEnv = buildSafeEnvironment(process.env)
+    return this.spawnCommand(id, shell, [], cwd, safeEnv)
+  }
+
+  public spawnCommand(id: string, command: string, args: string[], cwd: string, env: Record<string, string>) {
     if (this.ptys.has(id)) {
       this.destroyPty(id)
     }
@@ -60,18 +67,12 @@ export class PtyManager {
       return null
     }
 
-    const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash'
-    const cwd = customCwd || process.cwd()
-    
-    // Merge process.env with our safe env
-    const safeEnv = buildSafeEnvironment(process.env)
-
-    const ptyProcess = pty.spawn(shell, [], {
+    const ptyProcess = pty.spawn(command, args, {
       name: 'xterm-color',
       cols: 80,
       rows: 30,
       cwd,
-      env: safeEnv,
+      env,
     })
 
     ptyProcess.onData((data: string) => {

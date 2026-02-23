@@ -199,7 +199,7 @@
         OpenClaw
       </div>
       <div id="titlebar-tabs">
-        <button class="tab-btn active" id="tab-btn-gateway">控制台</button>
+        <button class="tab-btn active" id="tab-btn-gateway">本地网关</button>
         <button class="tab-btn" id="tab-btn-terminal">终端</button>
         <button class="tab-btn" id="tab-btn-browser">浏览器</button>
       </div>
@@ -230,14 +230,9 @@
   <!-- 内容区 -->
   <div id="content">
 
-    <!-- Tab 1: Gateway Control UI -->
+    <!-- Tab 1: Gateway Terminal -->
     <div id="tab-gateway" class="tab-content" style="display: block;">
-      <div id="gateway-loading" class="loading-center">
-        <div class="spinner"></div>
-        <div class="text" id="status">正在启动 Gateway...</div>
-      </div>
-      <!-- initial empty src, set by main.ts once ready -->
-      <iframe id="gateway-iframe" src="about:blank" style="display: none;"></iframe>
+      <div id="gateway-terminal-wrapper" class="terminal-container"></div>
     </div>
 
     <!-- Tab 2: Terminal -->
