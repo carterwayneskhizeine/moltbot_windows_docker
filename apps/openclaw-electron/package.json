@@ -16,8 +16,7 @@
     "build:installer-unpacked": "cross-env UNPACKED_ONLY=1 node scripts/build-installer.js",
     "electron:dev": "npm run build:electron && electron .",
     "typecheck": "tsc --noEmit",
-    "rebuild": "electron-builder install-app-deps",
-    "postinstall": "electron-builder install-app-deps"
+    "rebuild": "cross-env PYTHON=\"C:\\Users\\gotmo\\.conda\\envs\\node-gyp-env\\python.exe\" electron-builder install-app-deps"
   },
   "dependencies": {
     "@homebridge/node-pty-prebuilt-multiarch": "^0.13.1",
