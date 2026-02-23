@@ -6,12 +6,12 @@ directories:
   buildResources: assets
 
 buildDependenciesFromSource: false
-npmRebuild: false
+npmRebuild: true
 
 files:
   - dist/**/*
   - dist-electron/**/*
-  - node_modules/node-pty/**/*
+  - node_modules/@homebridge/**/*
 
 extraResources:
   - from: assets/
