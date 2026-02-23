@@ -16,7 +16,7 @@ async function run() {
   // The root 'openclaw' package is 3 directories up: apps/openclaw-electron/scripts/.. -> apps/openclaw-electron -> apps -> root
   const workspaceRoot = path.join(__dirname, '..', '..', '..');
   
-  execSync(`npm pack "${workspaceRoot}" --pack-destination "${TEMP_DIR}"`, { stdio: 'inherit' });
+  execSync(`npm pack "${workspaceRoot}" --pack-destination "${TEMP_DIR}" --ignore-scripts`, { stdio: 'inherit' });
 
   // Find the generated tgz file
   const files = fs.readdirSync(TEMP_DIR);
