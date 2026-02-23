@@ -1,0 +1,43 @@
+appId: com.openclaw.desktop
+productName: "OpenClaw"
+copyright: MIT License
+directories:
+  output: release
+  buildResources: assets
+
+files:
+  - dist/**/*
+  - dist-electron/**/*
+
+extraResources:
+  - from: bundled/node/
+    to: bundled/node/
+    filter:
+      - "**/*"
+  - from: bundled/openclaw/
+    to: bundled/openclaw/
+    filter:
+      - "**/*"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: assets/icon.ico
+  artifactName: "OpenClaw-Setup-${version}.${ext}"
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: assets/icon.ico
+  uninstallerIcon: assets/icon.ico
+  installerHeaderIcon: assets/icon.ico
+  include: installer/installer.nsh
+  perMachine: false
+  deleteAppDataOnUninstall: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: "OpenClaw"
+  runAfterFinish: true
+  allowElevation: false
