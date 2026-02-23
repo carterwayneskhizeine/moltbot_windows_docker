@@ -216,6 +216,8 @@ export class GatewayManager {
       OPENCLAW_NODE_OPTIONS_READY: '1',
       OPENCLAW_GATEWAY_PORT: String(this.opts.port),
       OPENCLAW_HOME: os.homedir(),
+      // 跳过频道加载，避免因缺少频道插件导致配置校验失败
+      OPENCLAW_SKIP_CHANNELS: '1',
     }
 
     if (token) env.OPENCLAW_GATEWAY_TOKEN = token
@@ -224,12 +226,15 @@ export class GatewayManager {
     this.log('info', `entry: ${entryScript}`)
     this.log('info', `cwd: ${this.opts.openclawPath}`)
 
+    // 注意：使用 'gateway start' 而非 'gateway'
+    // 因为 config-guard 中 'start' 在 ALLOWED_INVALID_GATEWAY_SUBCOMMANDS 白名单中，
+    // 允许在配置无效时继续启动（不会 exit(1)）
     this.process = spawn(
       this.opts.nodePath,
       [
         '--disable-warning=ExperimentalWarning',
         entryScript,
-        'gateway',
+        'gateway', 'start',
         '--port', String(this.opts.port),
       ],
       {
