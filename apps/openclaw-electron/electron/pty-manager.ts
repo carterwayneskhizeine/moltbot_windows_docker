@@ -47,10 +47,12 @@ export class PtyManager {
   }
 
   private createPty(id: string, customCwd?: string) {
-    const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash'
+    const isWin = process.platform === 'win32'
+    const shell = isWin ? 'cmd.exe' : 'bash'
+    const args = isWin ? ['/D'] : ['--noprofile', '--norc']
     const cwd = customCwd || process.cwd()
     const safeEnv = buildSafeEnvironment(process.env)
-    return this.spawnCommand(id, shell, [], cwd, safeEnv)
+    return this.spawnCommand(id, shell, args, cwd, safeEnv)
   }
 
   public spawnCommand(id: string, command: string, args: string[], cwd: string, env: Record<string, string>) {

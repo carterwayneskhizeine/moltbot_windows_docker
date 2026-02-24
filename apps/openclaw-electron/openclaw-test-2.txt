@@ -1,0 +1,1 @@
+2026-02-24T10:28:20.397+08:00 Missing config. Run `openclaw --profile electron setup` or set gateway.mode=local (or pass --allow-unconfigured).

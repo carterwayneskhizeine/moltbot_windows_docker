@@ -11,7 +11,13 @@ npmRebuild: true
 files:
   - dist/**/*
   - dist-electron/**/*
-  - node_modules/@homebridge/**/*
+  - package.json
+
+asarUnpack:
+  - "node_modules/openclaw/dist/control-ui/**/*"
+  - "node_modules/sqlite-vec/**/*"
+  - "node_modules/sharp/**/*"
+  - "node_modules/@homebridge/node-pty-prebuilt-multiarch/**/*"
 
 extraResources:
   - from: assets/

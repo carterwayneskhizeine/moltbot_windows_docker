@@ -1,0 +1,21 @@
+Invalid config at C:\Users\gotmo\.openclaw\openclaw.json:\n- channels.feishu: unknown channel id: feishu
+- plugins.entries.qwen-portal-auth: plugin not found: qwen-portal-auth
+- plugins.entries.feishu: plugin not found: feishu
+- plugins.entries.telegram: plugin not found: telegram
+- plugins.slots.memory: plugin not found: memory-core
+[90m|[39m
+[32mo[39m  [0mConfig[0m [90m---------------------------------------------------+[39m
+[90m|[39m                                                            [90m|[39m
+[90m|[39m  [2mConfig invalid; doctor will run with best-effort config.[22m  [90m|[39m
+[90m|[39m                                                            [90m|[39m
+[90m+------------------------------------------------------------+[39m
+Config invalid
+File: ~\.openclaw\openclaw.json
+Problem:
+  - channels.feishu: unknown channel id: feishu
+  - plugins.entries.qwen-portal-auth: plugin not found: qwen-portal-auth
+  - plugins.entries.feishu: plugin not found: feishu
+  - plugins.entries.telegram: plugin not found: telegram
+  - plugins.slots.memory: plugin not found: memory-core
+
+Run: openclaw --profile electron doctor --fix

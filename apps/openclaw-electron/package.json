@@ -12,8 +12,8 @@
     "preview": "vite preview",
     "prepare:node": "node scripts/prepare-node.js",
     "prepare:openclaw": "node scripts/prepare-openclaw.js",
-    "build:installer": "node scripts/build-installer.js",
-    "build:installer-unpacked": "cross-env UNPACKED_ONLY=1 node scripts/build-installer.js",
+    "build:installer": "cross-env PYTHON=\"C:\\Users\\gotmo\\.conda\\envs\\node-gyp-env\\python.exe\" node scripts/build-installer.js",
+    "build:installer-unpacked": "cross-env PYTHON=\"C:\\Users\\gotmo\\.conda\\envs\\node-gyp-env\\python.exe\" UNPACKED_ONLY=1 node scripts/build-installer.js",
     "electron:dev": "npm run build:electron && electron .",
     "typecheck": "tsc --noEmit",
     "rebuild": "cross-env PYTHON=\"C:\\Users\\gotmo\\.conda\\envs\\node-gyp-env\\python.exe\" electron-builder install-app-deps"
@@ -21,10 +21,14 @@
   "dependencies": {
     "@homebridge/node-pty-prebuilt-multiarch": "^0.13.1",
     "@xterm/addon-fit": "^0.10.0",
-    "@xterm/xterm": "^5.5.0"
+    "@xterm/xterm": "^5.5.0",
+    "electron-store": "^8.1.0",
+    "electron-window-state": "^5.0.3",
+    "openclaw": "latest"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.3",
+    "@types/electron-window-state": "^5.0.2",
     "@types/node": "^22.10.0",
     "@vitejs/plugin-react": "^4.3.4",
     "cross-env": "^7.0.3",

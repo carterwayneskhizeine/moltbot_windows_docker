@@ -1,0 +1,18 @@
+{
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto",
+    "restart": true,
+    "ownerDisplay": "raw"
+  },
+  "gateway": {
+    "auth": {
+      "mode": "token",
+      "token": "13938855e6f5af748484b2d5276f4f161cb77355a4d2ec12"
+    }
+  },
+  "meta": {
+    "lastTouchedVersion": "2026.2.23",
+    "lastTouchedAt": "2026-02-24T02:28:55.832Z"
+  }
+}

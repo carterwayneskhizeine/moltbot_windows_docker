@@ -15,7 +15,7 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
-              external: ['electron', '@homebridge/node-pty-prebuilt-multiarch'],
+              external: ['electron', '@homebridge/node-pty-prebuilt-multiarch', 'openclaw', 'electron-window-state', 'electron-store'],
             },
           },
         },
@@ -29,7 +29,7 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
-              external: ['electron', '@homebridge/node-pty-prebuilt-multiarch'],
+              external: ['electron', '@homebridge/node-pty-prebuilt-multiarch', 'openclaw', 'electron-window-state', 'electron-store'],
             },
           },
         },

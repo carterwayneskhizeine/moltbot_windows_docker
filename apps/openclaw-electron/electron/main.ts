@@ -1,12 +1,12 @@
 import { app, BrowserWindow, ipcMain, Menu, shell, Tray, dialog } from 'electron'
 import path from 'node:path'
-import { GatewayManager } from './gateway-manager'
-import { getNodePath, getOpenclawPath } from './node-runtime'
+import net from 'node:net'
+import windowStateKeeper from 'electron-window-state'
 
 // ─── Globals ─────────────────────────────────────────────────────────────────
 
 let mainWindow: BrowserWindow | null = null
-let gatewayManager: GatewayManager | null = null
+let gateway: { close: (opts?: { reason?: string }) => Promise<void> } | null = null
 let tray: Tray | null = null
 let isQuitting = false
 
@@ -64,9 +64,16 @@ let ptyManager: PtyManager | null = null
 function createWindow() {
   Menu.setApplicationMenu(null)
 
+  const mainWindowState = windowStateKeeper({
+    defaultWidth: 1440,
+    defaultHeight: 900,
+  })
+
   mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 900,
+    width: mainWindowState.width,
+    height: mainWindowState.height,
+    x: mainWindowState.x,
+    y: mainWindowState.y,
     minWidth: 900,
     minHeight: 600,
     title: 'OpenClaw',
@@ -85,6 +92,8 @@ function createWindow() {
 
   // 实例化 PtyManager
   ptyManager = new PtyManager(mainWindow)
+
+  mainWindowState.manage(mainWindow)
 
   mainWindow.once('ready-to-show', () => mainWindow?.show())
 
@@ -140,22 +149,31 @@ function createWindow() {
 
 function setupIPC() {
   ipcMain.handle('gateway:status', () =>
-    gatewayManager?.getStatus() ?? { state: 'stopped', port: GATEWAY_PORT },
+    gateway ? { state: 'running', port: GATEWAY_PORT } : { state: 'stopped', port: GATEWAY_PORT },
   )
 
   ipcMain.handle('gateway:start', async () => {
-    try { await gatewayManager?.start() } catch (err) { console.error('gateway:start failed:', err) }
+    try { await startGateway() } catch (err) { console.error('gateway:start failed:', err) }
   })
 
   ipcMain.handle('gateway:stop', async () => {
-    try { await gatewayManager?.stop() } catch (err) { console.error('gateway:stop failed:', err) }
+    if (gateway) {
+      try { 
+        await gateway.close({ reason: 'user-requested' })
+        gateway = null
+      } catch (err) { console.error('gateway:stop failed:', err) }
+    }
   })
 
   ipcMain.handle('gateway:restart', async () => {
-    try { await gatewayManager?.restart() } catch (err) { console.error('gateway:restart failed:', err) }
+    if (gateway) {
+      try { await gateway.close({ reason: 'user-requested-restart' }) } catch (err) {}
+      gateway = null
+    }
+    try { await startGateway() } catch (err) { console.error('gateway:restart failed:', err) }
   })
 
-  ipcMain.handle('gateway:getPort', () => gatewayManager?.getPort() ?? GATEWAY_PORT)
+  ipcMain.handle('gateway:getPort', () => GATEWAY_PORT)
 
   ipcMain.handle('app:getVersion', () => app.getVersion())
 
@@ -176,27 +194,132 @@ function setupIPC() {
 
 // ─── Gateway ──────────────────────────────────────────────────────────────────
 
-function initGatewayManager() {
-  const nodePath = getNodePath()
-  const openclawPath = getOpenclawPath()
+function attachWebContentsHandlers(webContents: Electron.WebContents): void {
+  webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    const headers = { ...details.responseHeaders }
+    delete headers['X-Frame-Options']
+    delete headers['x-frame-options']
+    for (const key of ['Content-Security-Policy', 'content-security-policy']) {
+      if (headers[key]) {
+        headers[key] = headers[key]!.map((c: string) =>
+          c.replace(/frame-ancestors[^;]+;?/gi, '')
+        )
+      }
+    }
+    callback({ responseHeaders: headers })
+  })
+}
 
-  console.log('[main] node:', nodePath)
-  console.log('[main] openclaw:', openclawPath)
+async function checkPortAvailable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer()
+    server.listen(port, '127.0.0.1')
+    server.on('listening', () => {
+      server.close()
+      resolve(true)
+    })
+    server.on('error', () => {
+      resolve(false)
+    })
+  })
+}
 
-  gatewayManager = new GatewayManager({
-    nodePath,
-    openclawPath,
-    port: GATEWAY_PORT,
-    onStateChange: (state) => {
-      console.log('[gateway]', state)
-      mainWindow?.webContents.send('gateway:stateChanged', state)
-      // 现在我们保持在 index.html，由渲染进程的 iframe 加载网关页面
-    },
-    onLog: (level, message) => {
-      console.log(`[gateway:${level}]`, message)
-      mainWindow?.webContents.send('gateway:log', { level, message })
-    },
-    getPtyManager: () => ptyManager,
+import { spawn, ChildProcess } from 'child_process'
+
+let gatewayProcess: ChildProcess | null = null
+
+async function startGateway(): Promise<void> {
+  if (process.platform === 'win32') {
+    const pathKey = 'Path' in process.env ? 'Path' : 'PATH'
+    const current = process.env[pathKey] || ''
+    if (!current.includes('C:\\Windows\\System32')) {
+      process.env[pathKey] = [
+        'C:\\Windows\\System32',
+        'C:\\Windows\\System32\\WindowsPowerShell\\v1.0',
+        current,
+      ].filter(Boolean).join(';')
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    try {
+      // Point directly to the exact bundled node and openclaw files!
+      const isPackaged = app.isPackaged
+      const basePath = isPackaged ? process.resourcesPath : path.join(process.cwd(), 'release', 'win-unpacked', 'resources')
+      const nodePath = path.join(basePath, 'bundled', 'node', process.platform === 'win32' ? 'node.exe' : 'node')
+      const openclawPath = path.join(basePath, 'bundled', 'openclaw', 'openclaw.mjs')
+
+      // Use a local isolated state directory to avoid user-level conflicts during dev/prod tests
+      const stateDir = path.join(app.getPath('userData'), 'gateway-state')
+
+      const logFile = path.join(process.cwd(), 'gateway-diag.log')
+      const fs = require('fs')
+      fs.writeFileSync(logFile, `[OpenClaw] Starting gateway via bundled node: ${nodePath}\n`)
+
+      console.log(`[OpenClaw] Starting gateway via bundled node: ${nodePath}`)
+      gatewayProcess = spawn(nodePath, [
+        openclawPath, 
+        'gateway', 
+        'run', 
+        '--port', 
+        String(GATEWAY_PORT),
+        '--allow-unconfigured'
+      ], {
+        windowsHide: true,
+        stdio: 'pipe',
+        env: {
+          ...process.env,
+          OPENCLAW_SKIP_CHANNELS: '1',
+          OPENCLAW_STATE_DIR: stateDir,
+          OPENCLAW_PROFILE: 'electron',
+          OPENCLAW_CONFIG_PATH: path.join(stateDir, 'openclaw.json')
+        }
+      })
+
+      if (gatewayProcess.stdout) {
+        gatewayProcess.stdout.on('data', (data) => {
+          fs.appendFileSync(logFile, `[STDOUT] ${data}\n`)
+          console.log(`[Gateway] ${data.toString().trim()}`)
+        })
+      }
+
+      if (gatewayProcess.stderr) {
+        gatewayProcess.stderr.on('data', (data) => {
+          fs.appendFileSync(logFile, `[STDERR] ${data}\n`)
+          console.error(`[Gateway Err] ${data.toString().trim()}`)
+        })
+      }
+
+      gatewayProcess.on('error', (err) => {
+        fs.appendFileSync(logFile, `[FATAL] ${err}\n`)
+        console.error('[OpenClaw] Failed to spawn bundled node process:', err)
+        reject(err)
+      })
+
+      gatewayProcess.on('close', (code) => {
+        fs.appendFileSync(logFile, `[CLOSE] Code ${code}\n`)
+        console.log(`[OpenClaw] Gateway process exited with code ${code}`)
+        gatewayProcess = null
+      })
+
+      // We resolve immediately after a short boot delay
+      setTimeout(() => {
+        gateway = {
+          close: async () => {
+            if (gatewayProcess) {
+              console.log('[OpenClaw] Killing gateway process...')
+              gatewayProcess.kill()
+              gatewayProcess = null
+            }
+          }
+        }
+        resolve()
+      }, 2000)
+
+    } catch (error) {
+      console.error('Failed to spawn openclaw locally:', error)
+      reject(error)
+    }
   })
 }
 
@@ -205,14 +328,17 @@ function initGatewayManager() {
 // 单实例锁
 const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
-  dialog.showMessageBoxSync({
-    type: 'warning',
-    title: 'OpenClaw',
-    message: 'OpenClaw 已在运行中',
-    detail: '请检查系统托盘，或关闭已运行的 OpenClaw 后再启动。',
-    buttons: ['确定'],
+  // dialog 只能在 app ready 之后调用
+  app.whenReady().then(() => {
+    dialog.showMessageBoxSync({
+      type: 'warning',
+      title: 'OpenClaw',
+      message: 'OpenClaw 已在运行中',
+      detail: '请检查系统托盘，或关闭已运行的 OpenClaw 后再启动。',
+      buttons: ['确定'],
+    })
+    app.quit()
   })
-  app.quit()
 } else {
   app.on('second-instance', () => {
     if (mainWindow) {
@@ -223,15 +349,26 @@ if (!gotTheLock) {
   })
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  const portAvailable = await checkPortAvailable(GATEWAY_PORT)
+  if (!portAvailable) {
+    console.warn(`[OpenClaw] Port ${GATEWAY_PORT} is already in use`)
+  }
+
+  try {
+    await startGateway()
+  } catch (error) {
+    console.error('[OpenClaw] Failed to start gateway:', error)
+  }
+
   createWindow()
   createTray()
 
-  setupIPC()
-  initGatewayManager()
+  app.on('web-contents-created', (_event, webContents) => {
+    attachWebContentsHandlers(webContents)
+  })
 
-  // 自动启动 Gateway
-  gatewayManager?.start()
+  setupIPC()
 })
 
 app.on('window-all-closed', () => {
@@ -254,10 +391,14 @@ app.on('before-quit', (event) => {
     tray = null
   }
 
-  if (gatewayManager) {
-    gatewayManager.stop().finally(() => {
-      app.quit()
-    })
+  if (gateway) {
+    console.log('[OpenClaw] Shutting down gateway...')
+    gateway.close({ reason: 'electron-quit' })
+      .catch((err: Error) => console.error('Gateway close error:', err))
+      .finally(() => {
+        gateway = null
+        app.quit()
+      })
   } else {
     app.quit()
   }
